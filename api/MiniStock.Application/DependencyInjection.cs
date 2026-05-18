@@ -2,6 +2,7 @@ using FluentValidation;
 using Mapster;
 using MapsterMapper;
 using Microsoft.Extensions.DependencyInjection;
+using MiniStock.Application.Services;
 
 namespace MiniStock.Application;
 
@@ -15,6 +16,8 @@ public static class DependencyInjection
         services.AddScoped<IMapper, ServiceMapper>();
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        services.AddScoped<AuthService>();
 
         return services;
     }
