@@ -1,6 +1,20 @@
-# Proyecto 1 — Sistema de gestión: API REST + Dashboard
+# 02 — MiniStock API: sistema de gestión de inventario
 
-> Tu primer proyecto de portafolio. Es el más importante porque demuestra fullstack completo, autenticación y deploy. Tiempo estimado: **2-3 semanas**.
+> GitHub: [tech-marcos-rios/ministock-api](https://github.com/tech-marcos-rios/ministock-api)
+
+API REST .NET 8 con Clean Architecture + dashboard Next.js. El proyecto de portafolio más importante porque demuestra fullstack completo, autenticación y deploy. Tiempo estimado total: **2-3 semanas**.
+
+## Estado actual
+
+- [x] Clean Architecture (4 capas: Api, Application, Domain, Infrastructure)
+- [x] Auth JWT completo: register / login / refresh / logout
+- [x] BCrypt, FluentValidation, Mapster
+- [x] Branch `feature/auth` — 2 commits adelante de `develop`
+- [ ] Migración EF Core + seed de roles (Admin/User con GUIDs fijos)
+- [ ] CRUD productos y categorías
+- [ ] Movimientos de stock
+- [ ] Dashboard frontend Next.js
+- [ ] Deploy en Hetzner :5010
 
 ## ¿Qué construir?
 
