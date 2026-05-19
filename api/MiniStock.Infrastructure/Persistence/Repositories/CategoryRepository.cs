@@ -12,11 +12,12 @@ public class CategoryRepository : ICategoryRepository
     public CategoryRepository(AppDbContext context) => _context = context;
 
     public Task<Category?> GetByIdAsync(Guid id, CancellationToken ct) =>
-        _context.Categories.FirstOrDefaultAsync(c => c.Id == id, ct);
+        _context.Categories.Include(c => c.Products).FirstOrDefaultAsync(c => c.Id == id, ct);
 
     public async Task<IReadOnlyList<Category>> GetAllActiveAsync(CancellationToken ct)
     {
         var list = await _context.Categories
+            .Include(c => c.Products)
             .Where(c => c.IsActive)
             .OrderBy(c => c.Name)
             .ToListAsync(ct);
@@ -25,10 +26,10 @@ public class CategoryRepository : ICategoryRepository
 
     public async Task<PagedResult<Category>> GetPagedAsync(int page, int pageSize, string? search, CancellationToken ct)
     {
-        var query = _context.Categories.AsQueryable();
+        var query = _context.Categories.Include(c => c.Products).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(c => c.Name.Contains(search));
+            query = query.Where(c => EF.Functions.ILike(c.Name, $"%{search}%"));
 
         var total = await query.CountAsync(ct);
         var items = await query
