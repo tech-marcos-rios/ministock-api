@@ -8,8 +8,8 @@ Define la arquitectura, estándares y convenciones del proyecto. **Todo el códi
 ## Sobre el proyecto
 
 **MiniStock** — sistema de gestión de inventario para pymes.
-Stack: .NET 8 Web API + Next.js 14 (App Router) + PostgreSQL (Supabase).
-Deploy: backend en Render, frontend en Vercel.
+Stack: .NET 8 Web API + Next.js 14 (App Router) + PostgreSQL.
+Deploy: backend en Hetzner :5010 (Docker), frontend en Vercel.
 
 ---
 
@@ -68,7 +68,7 @@ Fuente: [Andrew Lock — Working with the Result Pattern](https://andrewlock.net
 
 - Los casos de uso retornan `Result<T>` o `Result`, nunca lanzan excepciones de negocio.
 - Las excepciones se reservan para errores inesperados (infraestructura, bugs).
-- Un `GlobalExceptionMiddleware` convierte excepciones no controladas en respuestas HTTP 500.
+- TODO: agregar `GlobalExceptionMiddleware` para convertir excepciones no controladas en respuestas HTTP 500.
 
 ```csharp
 // Correcto
@@ -91,9 +91,9 @@ Fuente: [FluentValidation — documentación oficial](https://fluentvalidation.n
 - Registrar con `AddValidatorsFromAssembly` en el DI.
 - Los controllers no validan manualmente: el middleware de validación lo hace antes de llegar al handler.
 
-### Mapeo con AutoMapper
-- Profiles en `Application/Mappings/`.
-- Un profile por entidad de dominio.
+### Mapeo con Mapster
+- Configuración global en `Application/DependencyInjection.cs` via `TypeAdapterConfig`.
+- Mapeos simples se resuelven por convención (mismo nombre de propiedad).
 - Nunca mapear en el controller ni en el repositorio.
 
 ---

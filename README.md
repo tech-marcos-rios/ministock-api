@@ -1,140 +1,155 @@
-# 02 — MiniStock API: sistema de gestión de inventario
+# MiniStock API
 
-> GitHub: [tech-marcos-rios/ministock-api](https://github.com/tech-marcos-rios/ministock-api)
+Inventory management REST API built with .NET 8 and Clean Architecture. Part of my fullstack portfolio — the backend powers a Next.js dashboard (in progress).
 
-API REST .NET 8 con Clean Architecture + dashboard Next.js. El proyecto de portafolio más importante porque demuestra fullstack completo, autenticación y deploy. Tiempo estimado total: **2-3 semanas**.
+[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com)
+[![EF Core](https://img.shields.io/badge/EF_Core-8.0-512BD4)](https://learn.microsoft.com/en-us/ef/core/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Estado actual
+## Features
 
-- [x] Clean Architecture (4 capas: Api, Application, Domain, Infrastructure)
-- [x] Auth JWT completo: register / login / refresh / logout
-- [x] BCrypt, FluentValidation, Mapster
-- [x] Branch `feature/auth` — 2 commits adelante de `develop`
-- [ ] Migración EF Core + seed de roles (Admin/User con GUIDs fijos)
-- [ ] CRUD productos y categorías
-- [ ] Movimientos de stock
-- [ ] Dashboard frontend Next.js
-- [ ] Deploy en Hetzner :5010
+- **Auth** — JWT access tokens + refresh tokens, BCrypt password hashing, role-based (Admin / User)
+- **Products** — full CRUD, pagination, case-insensitive search by name or SKU, soft delete
+- **Categories** — full CRUD, pagination, flat list endpoint for dropdowns
+- **Stock movements** — Entry / Exit / Adjustment types, automatic stock update, insufficient-stock guard
+- **Swagger UI** — available in development at `/swagger`
+- **Health check** — `GET /health`
 
-## ¿Qué construir?
+## Tech stack
 
-Un mini sistema de gestión de inventario / clientes / pedidos (elegí uno). El dominio importa poco — lo que se evalúa es la calidad técnica.
+| Layer | Technology |
+|---|---|
+| Runtime | .NET 8 |
+| Web framework | ASP.NET Core Web API |
+| ORM | Entity Framework Core 8 + Npgsql |
+| Database | PostgreSQL 16 |
+| Auth | JWT Bearer + refresh tokens |
+| Validation | FluentValidation |
+| Mapping | Mapster |
+| Logging | Serilog → Console |
+| Docs | Swashbuckle / Swagger |
 
-**Sugerencia**: "MiniStock" — gestión de inventario para pymes con productos, categorías, movimientos de stock y alertas de stock bajo.
+## Architecture
 
-## Stack
-
-**Backend**
-- .NET 8 + ASP.NET Core Web API
-- Entity Framework Core
-- PostgreSQL (gratis en Supabase o Neon)
-- JWT con refresh tokens
-- AutoMapper, FluentValidation
-- Swagger / OpenAPI
-
-**Frontend**
-- Next.js 14 (App Router)
-- TypeScript
-- Tailwind CSS
-- Recharts (gráficos)
-- React Hook Form + Zod (formularios y validación)
-- Tanstack Query (fetching y cache)
-
-**Deploy**
-- Backend: Azure App Service (free tier) o Render
-- Frontend: Vercel (gratis)
-- DB: Supabase (gratis)
-
-## Features mínimos (MVP)
-
-1. **Auth**: registro, login, logout. JWT con refresh token.
-2. **Roles**: admin / usuario.
-3. **CRUD productos**: crear, listar (con paginación + búsqueda), editar, eliminar.
-4. **CRUD categorías**: relacionadas con productos.
-5. **Movimientos de stock**: registrar entradas/salidas.
-6. **Dashboard**: gráficos de stock por categoría, productos con stock bajo, movimientos recientes.
-7. **Responsive**: tiene que verse bien en mobile.
-8. **Deploy en producción** con dominio público.
-
-## Arquitectura sugerida
+Clean Architecture with 4 layers, strict dependency rule (outer → inner only):
 
 ```
-proyecto-1-api-dashboard/
-├── api/                            # Backend .NET
-│   ├── MiniStock.Api/              # Web API project
-│   ├── MiniStock.Application/      # Casos de uso, DTOs
-│   ├── MiniStock.Domain/           # Entidades, lógica de dominio
-│   ├── MiniStock.Infrastructure/   # EF Core, repositorios
-│   └── MiniStock.sln
-├── web/                            # Frontend Next.js
-│   └── (estructura igual a portfolio-web)
-└── README.md
+MiniStock.Domain          — entities, enums, no external dependencies
+MiniStock.Application     — services, DTOs, repository interfaces, validators
+MiniStock.Infrastructure  — EF Core, repositories, JWT service, migrations
+MiniStock.Api             — controllers, DI wiring, Swagger, middleware
 ```
 
-## Plan paso a paso
+## API endpoints
 
-### Día 1-2: Backend setup
-- Crear solución .NET con los 4 proyectos (Clean Architecture).
-- Configurar EF Core + PostgreSQL.
-- Migración inicial con tablas: Users, Roles, Products, Categories, StockMovements.
-- Endpoints de health check + Swagger.
+All endpoints require `Authorization: Bearer <token>` except auth.
 
-### Día 3-5: Auth + CRUD
-- Endpoints `/auth/register`, `/auth/login`, `/auth/refresh`.
-- Middleware JWT, atributos `[Authorize]`.
-- CRUD de productos y categorías.
+### Auth — `POST /api/v1/auth`
+| Method | Path | Description |
+|---|---|---|
+| POST | `/register` | Create account (assigned User role) |
+| POST | `/login` | Get access + refresh tokens |
+| POST | `/refresh` | Rotate tokens |
+| POST | `/logout` | Revoke refresh token |
 
-### Día 6-7: Dashboard data
-- Endpoints agregados: stock por categoría, top productos, movimientos recientes.
-- Tests de integración básicos.
+### Products — `/api/v1/products`
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | Paged list — `?page&pageSize&search&categoryId` |
+| GET | `/{id}` | Single product |
+| POST | `/` | Create product |
+| PUT | `/{id}` | Update product |
+| DELETE | `/{id}` | Soft deactivate |
 
-### Día 8-10: Frontend setup + auth
-- Pantallas de login y registro.
-- Layout con sidebar + topbar.
-- Tanstack Query con interceptor para refresh tokens.
+### Categories — `/api/v1/categories`
+| Method | Path | Description |
+|---|---|---|
+| GET | `/` | Paged list — `?page&pageSize&search` |
+| GET | `/all` | All active categories (for dropdowns) |
+| GET | `/{id}` | Single category |
+| POST | `/` | Create category |
+| PUT | `/{id}` | Update category |
+| DELETE | `/{id}` | Soft deactivate |
 
-### Día 11-13: Pantallas CRUD
-- Listado de productos con tabla, paginación, búsqueda.
-- Form de crear/editar producto.
-- Listado de categorías.
-- Pantalla de movimientos de stock.
+### Stock movements — `/api/v1/stock-movements`
+| Method | Path | Description |
+|---|---|---|
+| POST | `/` | Register movement (Entry / Exit / Adjustment) |
+| GET | `/` | Paged list — `?page&pageSize&productId` |
+| GET | `/recent` | Latest N movements — `?count=10` (for dashboard widget) |
 
-### Día 14-15: Dashboard + polish
-- Página `/dashboard` con KPIs y gráficos.
-- Modo oscuro (heredarlo de tu portfolio).
-- Estados de carga y errores.
+## Running locally
 
-### Día 16-18: Deploy y documentación
-- Dockerizar la API (opcional pero suma).
-- Deploy backend en Azure App Service o Render.
-- Deploy frontend en Vercel.
-- README con capturas, cómo correrlo en local, link a la demo.
-- Crear video de 90 segundos mostrando el sistema (Loom es gratis).
+### Prerequisites
+- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- [Docker](https://www.docker.com) (for PostgreSQL)
 
-## Cómo trabajarlo con Claude Code
+### 1. Start the database
 
 ```bash
-cd proyecto-1-api-dashboard
-# Crea la solución .NET
-dotnet new sln -n MiniStock
-# A partir de acá pedile a Claude Code que arme cada proyecto.
+docker run -d --name ministock-postgres \
+  -e POSTGRES_USER=ministock \
+  -e POSTGRES_PASSWORD=ministock123 \
+  -e POSTGRES_DB=ministock \
+  -p 5433:5432 \
+  postgres:16-alpine
 ```
 
-Pídele a Claude Code (en una sesión separada dentro de la carpeta del proyecto):
+### 2. Configure secrets
 
-> "Voy a construir una Web API en .NET 8 con Clean Architecture (4 proyectos: Api, Application, Domain, Infrastructure). Usaremos EF Core con PostgreSQL. Vamos a hacerlo paso a paso. Empezá creando los 4 proyectos y la solución, y mostrame los comandos dotnet."
+Edit `api/MiniStock.Api/appsettings.Development.json`:
 
-Luego ve agregando features uno por uno, leyendo el código que genera y haciendo preguntas.
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5433;Database=ministock;Username=ministock;Password=ministock123"
+  },
+  "Jwt": {
+    "Key": "your-secret-key-min-32-characters-long",
+    "Issuer": "ministock-api",
+    "Audience": "ministock-web"
+  }
+}
+```
 
-## Cómo presentarlo en el portafolio
+### 3. Apply migrations and run
 
-- README con badges (build, deploy, license).
-- Capturas de cada pantalla principal.
-- Diagrama de arquitectura simple (Excalidraw o draw.io).
-- Sección "Decisiones técnicas" explicando por qué Clean Architecture, por qué PostgreSQL, etc.
-- Link a la demo en vivo.
-- Credenciales de demo: `demo@demo.com / Demo123!`.
+```bash
+# Apply migrations
+dotnet ef database update \
+  --project api/MiniStock.Infrastructure \
+  --startup-project api/MiniStock.Api
 
-## Por qué este proyecto
+# Run
+dotnet run --project api/MiniStock.Api --launch-profile http
+```
 
-Cubre prácticamente todos los requisitos típicos de un proyecto freelance: auth, CRUD, dashboard, deploy. Cuando un cliente vea tu portfolio, va a pensar "este flaco puede hacer mi sistema interno". Vale más que 10 landing pages.
+API available at `http://localhost:5197` — Swagger at `http://localhost:5197/swagger`.
+
+### Demo credentials
+
+After running, register at `POST /api/v1/auth/register` with any email/password, or use:
+
+```
+email: demo@ministock.com
+password: Demo123!
+```
+
+## Project status
+
+- [x] Clean Architecture setup
+- [x] JWT auth (register / login / refresh / logout)
+- [x] EF Core migrations + role seed (Admin / User)
+- [x] Products CRUD
+- [x] Categories CRUD
+- [x] Stock movements (Entry / Exit / Adjustment)
+- [ ] Dashboard aggregate endpoints
+- [ ] Next.js frontend
+- [ ] Docker Compose (API + DB)
+- [ ] CI/CD with GitHub Actions
+- [ ] Production deploy (Hetzner)
+
+## License
+
+MIT
