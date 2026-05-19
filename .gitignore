@@ -5,6 +5,7 @@
 
 # dotenv files
 .env
+deploy/.env
 
 # Local secrets (never commit)
 appsettings.Development.json
