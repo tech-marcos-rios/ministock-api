@@ -79,6 +79,14 @@ All endpoints require `Authorization: Bearer <token>` except auth.
 | GET | `/` | Paged list — `?page&pageSize&productId` |
 | GET | `/recent` | Latest N movements — `?count=10` (for dashboard widget) |
 
+### Dashboard — `/api/v1/dashboard`
+| Method | Path | Description |
+|---|---|---|
+| GET | `/summary` | KPIs (total products, categories, low stock, total value) |
+| GET | `/stock-by-category` | Stock grouped by category for charts |
+| GET | `/low-stock` | Products with Stock <= MinStock |
+| GET | `/recent-movements` | Latest N movements (reused logic) |
+
 ## Running locally
 
 ### Prerequisites
@@ -144,8 +152,8 @@ password: Demo123!
 - [x] Products CRUD
 - [x] Categories CRUD
 - [x] Stock movements (Entry / Exit / Adjustment)
-- [ ] Dashboard aggregate endpoints
-- [ ] Next.js frontend
+- [x] Dashboard aggregate endpoints
+- [x] Next.js frontend (scaffolded and dashboard UI integrated)
 - [ ] Docker Compose (API + DB)
 - [ ] CI/CD with GitHub Actions
 - [ ] Production deploy (Hetzner)
