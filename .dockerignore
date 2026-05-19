@@ -1,0 +1,9 @@
+**/.git
+**/.vs
+**/bin
+**/obj
+**/node_modules
+web/.next
+deploy/.env
+**/*.user
+**/*.suo
