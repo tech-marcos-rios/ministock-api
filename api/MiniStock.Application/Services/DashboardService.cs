@@ -47,8 +47,11 @@ public class DashboardService
     public async Task<Result<IReadOnlyList<ProductResponse>>> GetLowStockProductsAsync(CancellationToken ct = default)
     {
         var products = await _products.GetLowStockAsync(ct);
-        var dtos = products.Adapt<IReadOnlyList<ProductResponse>>();
-        return Result.Success(dtos);
+        var dtos = products.Select(p => new ProductResponse(
+            p.Id, p.Name, p.Description, p.SKU, p.Price, p.Stock, p.MinStock,
+            p.IsLowStock, p.IsActive, p.CategoryId, p.Category.Name, p.CreatedAt, p.UpdatedAt
+        )).ToList();
+        return Result.Success<IReadOnlyList<ProductResponse>>(dtos);
     }
 
     public async Task<Result<IReadOnlyList<StockMovementResponse>>> GetRecentMovementsAsync(int count = 10, CancellationToken ct = default)
