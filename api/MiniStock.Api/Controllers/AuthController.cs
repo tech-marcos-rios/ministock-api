@@ -19,8 +19,7 @@ public class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
-        // TODO: obtener el roleId de "User" desde la base de datos o configuración
-        var defaultRoleId = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        var defaultRoleId = MiniStock.Infrastructure.Persistence.Configurations.RoleConfiguration.UserRoleId;
         var result = await _authService.RegisterAsync(request, defaultRoleId, ct);
 
         if (result.IsFailure)

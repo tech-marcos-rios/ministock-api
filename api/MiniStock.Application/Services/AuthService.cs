@@ -32,8 +32,10 @@ public class AuthService
         await _users.AddAsync(user, ct);
         await _uow.SaveChangesAsync(ct);
 
-        var accessToken = _jwt.GenerateAccessToken(user);
-        return Result.Success(BuildResponse(user, accessToken, refreshToken));
+        // Recargamos para obtener la navegación Role (necesaria en BuildResponse)
+        var saved = await _users.GetByIdAsync(user.Id, ct);
+        var accessToken = _jwt.GenerateAccessToken(saved!);
+        return Result.Success(BuildResponse(saved!, accessToken, refreshToken));
     }
 
     public async Task<Result<AuthResponse>> LoginAsync(LoginRequest request, CancellationToken ct = default)

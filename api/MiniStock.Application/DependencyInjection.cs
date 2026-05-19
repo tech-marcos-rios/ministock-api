@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
         services.AddScoped<AuthService>();
+        services.AddScoped<ProductService>();
 
         return services;
     }

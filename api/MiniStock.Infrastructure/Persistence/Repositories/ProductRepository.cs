@@ -19,7 +19,9 @@ public class ProductRepository : IProductRepository
         var query = _context.Products.Include(p => p.Category).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(p => p.Name.Contains(search) || p.SKU.Contains(search));
+            query = query.Where(p =>
+                EF.Functions.ILike(p.Name, $"%{search}%") ||
+                EF.Functions.ILike(p.SKU,  $"%{search}%"));
 
         if (categoryId.HasValue)
             query = query.Where(p => p.CategoryId == categoryId);
