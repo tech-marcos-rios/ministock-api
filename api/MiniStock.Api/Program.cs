@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MiniStock.Application;
 using MiniStock.Infrastructure;
+using MiniStock.Infrastructure.Persistence;
 using Serilog;
 using System.Text;
 
@@ -21,6 +23,13 @@ try
 
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+
+    var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "*").Split(',');
+    builder.Services.AddCors(options =>
+        options.AddDefaultPolicy(policy =>
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()));
 
     builder.Services.AddControllers();
     builder.Services.AddEndpointsApiExplorer();
@@ -68,14 +77,18 @@ try
 
     var app = builder.Build();
 
-    if (app.Environment.IsDevelopment())
+    // Auto-migrate al iniciar (crea las tablas si no existen)
+    using (var scope = app.Services.CreateScope())
     {
-        app.UseSwagger();
-        app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniStock API v1"));
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync();
     }
 
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniStock API v1"));
+
     app.UseSerilogRequestLogging();
-    app.UseHttpsRedirection();
+    app.UseCors();
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
