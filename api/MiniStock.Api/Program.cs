@@ -77,11 +77,11 @@ try
 
     var app = builder.Build();
 
-    // Auto-migrate al iniciar (crea las tablas si no existen)
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
+        await DatabaseSeeder.SeedAsync(db);
     }
 
     app.UseSwagger();
