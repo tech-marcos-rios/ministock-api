@@ -1,163 +1,229 @@
-# MiniStock API
+# MiniStock — Sistema de Gestión de Inventario
 
-Inventory management REST API built with .NET 8 and Clean Architecture. Part of my fullstack portfolio — the backend powers a Next.js dashboard (in progress).
+**Demo en vivo:** https://web-ochre-zeta-22.vercel.app &nbsp;·&nbsp; **API Swagger:** http://204.168.134.159:5010/swagger
+
+> Sistema fullstack de inventario con autenticación JWT, CRUD completo de productos/categorías/movimientos y dashboard con métricas en tiempo real.
 
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)](https://dotnet.microsoft.com)
-[![EF Core](https://img.shields.io/badge/EF_Core-8.0-512BD4)](https://learn.microsoft.com/en-us/ef/core/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](https://www.docker.com)
 
-## Features
+---
 
-- **Auth** — JWT access tokens + refresh tokens, BCrypt password hashing, role-based (Admin / User)
-- **Products** — full CRUD, pagination, case-insensitive search by name or SKU, soft delete
-- **Categories** — full CRUD, pagination, flat list endpoint for dropdowns
-- **Stock movements** — Entry / Exit / Adjustment types, automatic stock update, insufficient-stock guard
-- **Swagger UI** — available in development at `/swagger`
-- **Health check** — `GET /health`
+## Screenshots
 
-## Tech stack
+| Dashboard | Productos | Movimientos |
+|:---------:|:---------:|:-----------:|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Productos](docs/screenshots/productos.png) | ![Movimientos](docs/screenshots/movimientos.png) |
 
-| Layer | Technology |
-|---|---|
-| Runtime | .NET 8 |
-| Web framework | ASP.NET Core Web API |
-| ORM | Entity Framework Core 8 + Npgsql |
-| Database | PostgreSQL 16 |
-| Auth | JWT Bearer + refresh tokens |
-| Validation | FluentValidation |
-| Mapping | Mapster |
-| Logging | Serilog → Console |
-| Docs | Swashbuckle / Swagger |
+---
 
-## Architecture
+## Credenciales demo
 
-Clean Architecture with 4 layers, strict dependency rule (outer → inner only):
+| Campo    | Valor               |
+|----------|---------------------|
+| Email    | admin@ministock.com |
+| Password | Admin123!           |
+
+---
+
+## Stack técnico
+
+| Capa           | Tecnología                                                                 |
+|----------------|----------------------------------------------------------------------------|
+| Backend        | .NET 8 · ASP.NET Core · Clean Architecture (4 capas)                      |
+| ORM / DB       | EF Core 8 · PostgreSQL 16 · migraciones automáticas al iniciar             |
+| Auth           | JWT access tokens + refresh tokens · BCrypt · roles Admin/User            |
+| Validación     | FluentValidation                                                           |
+| Mapping        | Mapster                                                                    |
+| Logging        | Serilog → Console                                                          |
+| Frontend       | Next.js 14 (App Router) · TypeScript strict · Tailwind CSS                |
+| Data fetching  | Tanstack Query v5 (React Query)                                            |
+| HTTP client    | Axios con interceptor JWT + redirect 401 automático                        |
+| Gráficos       | Recharts                                                                   |
+| Deploy API     | Docker multi-stage · docker-compose · Hetzner VPS :5010                   |
+| Deploy web     | Vercel (HTTPS automático)                                                  |
+| CI/CD          | GitHub Actions → SSH → `docker compose up --build` en cada push a `main`  |
+
+---
+
+## Arquitectura
 
 ```
-MiniStock.Domain          — entities, enums, no external dependencies
-MiniStock.Application     — services, DTOs, repository interfaces, validators
-MiniStock.Infrastructure  — EF Core, repositories, JWT service, migrations
-MiniStock.Api             — controllers, DI wiring, Swagger, middleware
+02-inventory-api/
+├── api/
+│   ├── MiniStock.Domain/          # Entidades, enums — sin dependencias externas
+│   ├── MiniStock.Application/     # Servicios, DTOs, interfaces, validadores
+│   ├── MiniStock.Infrastructure/  # EF Core, repositorios, JWT, seeder
+│   └── MiniStock.Api/             # Controllers, Program.cs, Swagger
+├── web/
+│   └── src/
+│       ├── app/
+│       │   ├── (app)/             # Rutas protegidas (sidebar + auth guard)
+│       │   ├── api/v1/[...path]/  # Proxy Route Handler → evita mixed-content
+│       │   └── login/
+│       ├── hooks/                 # useProducts, useCategories, useMovements…
+│       └── lib/                   # api.ts (Axios + JWT), auth.ts (localStorage)
+└── deploy/
+    ├── Dockerfile                 # Multi-stage build .NET 8
+    ├── docker-compose.yml         # API + PostgreSQL con health checks
+    └── nginx.conf
 ```
 
-## API endpoints
+### Decisiones de diseño
 
-All endpoints require `Authorization: Bearer <token>` except auth.
+- **Proxy Route Handler:** el frontend en Vercel (HTTPS) no puede llamar directamente a la API en HTTP. Un Route Handler de Next.js actúa como proxy server-side, evitando el bloqueo mixed-content del browser. Solución: excluir el header `Expect` al reenviar la petición (Kestrel no lo soporta).
+- **Result\<T\> pattern:** los servicios de Application devuelven `Result<T>` en lugar de lanzar excepciones de negocio. Los controllers mapean el resultado a HTTP sin try/catch.
+- **Seed idempotente:** `DatabaseSeeder.SeedAsync` corre en cada startup pero solo inserta si `Categories` está vacía.
+- **Soft delete:** productos y categorías tienen `IsActive` — nunca se borran físicamente.
 
-### Auth — `POST /api/v1/auth`
-| Method | Path | Description |
-|---|---|---|
-| POST | `/register` | Create account (assigned User role) |
-| POST | `/login` | Get access + refresh tokens |
-| POST | `/refresh` | Rotate tokens |
-| POST | `/logout` | Revoke refresh token |
+---
 
-### Products — `/api/v1/products`
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Paged list — `?page&pageSize&search&categoryId` |
-| GET | `/{id}` | Single product |
-| POST | `/` | Create product |
-| PUT | `/{id}` | Update product |
-| DELETE | `/{id}` | Soft deactivate |
+## Setup local
 
-### Categories — `/api/v1/categories`
-| Method | Path | Description |
-|---|---|---|
-| GET | `/` | Paged list — `?page&pageSize&search` |
-| GET | `/all` | All active categories (for dropdowns) |
-| GET | `/{id}` | Single category |
-| POST | `/` | Create category |
-| PUT | `/{id}` | Update category |
-| DELETE | `/{id}` | Soft deactivate |
+### Requisitos
 
-### Stock movements — `/api/v1/stock-movements`
-| Method | Path | Description |
-|---|---|---|
-| POST | `/` | Register movement (Entry / Exit / Adjustment) |
-| GET | `/` | Paged list — `?page&pageSize&productId` |
-| GET | `/recent` | Latest N movements — `?count=10` (for dashboard widget) |
-
-### Dashboard — `/api/v1/dashboard`
-| Method | Path | Description |
-|---|---|---|
-| GET | `/summary` | KPIs (total products, categories, low stock, total value) |
-| GET | `/stock-by-category` | Stock grouped by category for charts |
-| GET | `/low-stock` | Products with Stock <= MinStock |
-| GET | `/recent-movements` | Latest N movements (reused logic) |
-
-## Running locally
-
-### Prerequisites
 - [.NET 8 SDK](https://dotnet.microsoft.com/download)
-- [Docker](https://www.docker.com) (for PostgreSQL)
+- [Node.js 18+](https://nodejs.org)
+- [Docker Desktop](https://www.docker.com)
 
-### 1. Start the database
+### Backend
 
 ```bash
-docker run -d --name ministock-postgres \
-  -e POSTGRES_USER=ministock \
-  -e POSTGRES_PASSWORD=ministock123 \
+# 1. PostgreSQL local
+docker run -d --name ministock-db \
   -e POSTGRES_DB=ministock \
-  -p 5433:5432 \
-  postgres:16-alpine
+  -e POSTGRES_USER=ministock \
+  -e POSTGRES_PASSWORD=localpass \
+  -p 5432:5432 postgres:16-alpine
+
+# 2. Secrets (nunca en el código)
+cd api/MiniStock.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" \
+  "Host=localhost;Port=5432;Database=ministock;Username=ministock;Password=localpass"
+dotnet user-secrets set "Jwt:Key" "clave-secreta-de-al-menos-32-caracteres"
+dotnet user-secrets set "Jwt:Issuer" "ministock-api"
+dotnet user-secrets set "Jwt:Audience" "ministock-web"
+
+# 3. Correr — migra, seedea y arranca
+dotnet run --project api/MiniStock.Api
+# API en http://localhost:5197 · Swagger en http://localhost:5197/swagger
 ```
 
-### 2. Configure secrets
-
-Edit `api/MiniStock.Api/appsettings.Development.json`:
-
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Host=localhost;Port=5433;Database=ministock;Username=ministock;Password=ministock123"
-  },
-  "Jwt": {
-    "Key": "your-secret-key-min-32-characters-long",
-    "Issuer": "ministock-api",
-    "Audience": "ministock-web"
-  }
-}
-```
-
-### 3. Apply migrations and run
+### Frontend
 
 ```bash
-# Apply migrations
-dotnet ef database update \
-  --project api/MiniStock.Infrastructure \
-  --startup-project api/MiniStock.Api
-
-# Run
-dotnet run --project api/MiniStock.Api --launch-profile http
+cd web
+echo 'NEXT_PUBLIC_API_URL=http://localhost:5197/api/v1' > .env.local
+npm install
+npm run dev
+# App en http://localhost:3000
 ```
 
-API available at `http://localhost:5197` — Swagger at `http://localhost:5197/swagger`.
+---
 
-### Demo credentials
+## Deploy en producción
 
-After running, register at `POST /api/v1/auth/register` with any email/password, or use:
+El deploy es automático con cada push a `main`:
 
 ```
-email: demo@ministock.com
-password: Demo123!
+git push origin main
+# → GitHub Actions: dotnet build → SSH → docker compose up --build
 ```
 
-## Project status
+### Secrets de GitHub Actions
 
-- [x] Clean Architecture setup
-- [x] JWT auth (register / login / refresh / logout)
-- [x] EF Core migrations + role seed (Admin / User)
-- [x] Products CRUD
-- [x] Categories CRUD
-- [x] Stock movements (Entry / Exit / Adjustment)
-- [x] Dashboard aggregate endpoints
-- [x] Next.js frontend (scaffolded and dashboard UI integrated)
-- [ ] Docker Compose (API + DB)
-- [ ] CI/CD with GitHub Actions
-- [ ] Production deploy (Hetzner)
+| Secret            | Descripción         |
+|-------------------|---------------------|
+| `HETZNER_HOST`    | IP del servidor     |
+| `HETZNER_USER`    | Usuario SSH         |
+| `HETZNER_SSH_KEY` | Clave privada SSH   |
 
-## License
+### Variables en el servidor (`deploy/.env`)
 
-MIT
+```env
+DB_PASSWORD=...
+JWT_KEY=...
+CORS_ORIGINS=https://web-ochre-zeta-22.vercel.app
+```
+
+### Variables en Vercel
+
+| Variable              | Valor                              |
+|-----------------------|------------------------------------|
+| `NEXT_PUBLIC_API_URL` | `/api/v1`                          |
+| `API_BASE_URL`        | `http://<IP>:5010/api/v1`          |
+
+---
+
+## Endpoints
+
+Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
+
+### Auth `POST /api/v1/auth`
+
+| Método | Ruta        | Descripción                         |
+|--------|-------------|-------------------------------------|
+| POST   | `/register` | Registro (rol User por defecto)     |
+| POST   | `/login`    | Login → accessToken + refreshToken  |
+| POST   | `/refresh`  | Rotar tokens                        |
+| POST   | `/logout`   | Revocar refresh token               |
+
+### Products `/api/v1/products`
+
+| Método | Ruta    | Descripción                                        |
+|--------|---------|----------------------------------------------------|
+| GET    | `/`     | Lista paginada `?page&pageSize&search&categoryId`  |
+| GET    | `/{id}` | Producto por ID                                    |
+| POST   | `/`     | Crear producto                                     |
+| PUT    | `/{id}` | Editar producto                                    |
+| DELETE | `/{id}` | Soft delete                                        |
+
+### Categories `/api/v1/categories`
+
+| Método | Ruta    | Descripción                       |
+|--------|---------|-----------------------------------|
+| GET    | `/`     | Lista paginada `?page&pageSize&search` |
+| GET    | `/all`  | Todas activas (para dropdowns)    |
+| GET    | `/{id}` | Categoría por ID                  |
+| POST   | `/`     | Crear categoría                   |
+| PUT    | `/{id}` | Editar categoría                  |
+| DELETE | `/{id}` | Soft delete                       |
+
+### Stock Movements `/api/v1/stock-movements`
+
+| Método | Ruta | Descripción                               |
+|--------|------|-------------------------------------------|
+| POST   | `/`  | Registrar movimiento (Entry/Exit/Adjustment) |
+| GET    | `/`  | Historial paginado `?page&pageSize&productId` |
+
+### Dashboard `/api/v1/dashboard`
+
+| Método | Ruta                  | Descripción                              |
+|--------|-----------------------|------------------------------------------|
+| GET    | `/summary`            | KPIs (total productos, valor, bajo stock) |
+| GET    | `/stock-by-category`  | Stock agrupado por categoría (gráfico)   |
+| GET    | `/low-stock`          | Productos con stock ≤ mínimo             |
+| GET    | `/recent-movements`   | Últimos N movimientos                    |
+
+---
+
+## Estado del proyecto
+
+- [x] Clean Architecture + EF Core + PostgreSQL
+- [x] JWT auth — register / login / refresh / logout
+- [x] CRUD Productos, Categorías, Movimientos de stock
+- [x] Dashboard con KPIs y gráfico por categoría
+- [x] Frontend Next.js 14 completo y conectado
+- [x] Docker multi-stage + docker-compose
+- [x] CI/CD con GitHub Actions
+- [x] Deploy en producción (Hetzner + Vercel)
+- [x] Seed de datos demo
+
+---
+
+## Autor
+
+**Marcos Ríos** — Desarrollador Fullstack .NET / Next.js  
+[Portfolio](https://portfolio-web-drab-ten.vercel.app/) · [LinkedIn](https://www.linkedin.com/in/marcos-sebasti%C3%A1n-r%C3%ADos-359b717/) · [GitHub](https://github.com/tech-marcos-rios)
