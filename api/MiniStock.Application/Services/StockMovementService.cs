@@ -49,7 +49,7 @@ public class StockMovementService
     {
         var product = await _products.GetByIdAsync(request.ProductId, ct);
         if (product is null)
-            return Result.Failure<StockMovementResponse>("Producto no encontrado.");
+            return Result.Failure<StockMovementResponse>("Producto no encontrado.", notFound: true);
 
         if (!product.IsActive)
             return Result.Failure<StockMovementResponse>("No se pueden registrar movimientos en un producto inactivo.");

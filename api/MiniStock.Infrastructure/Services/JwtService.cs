@@ -45,7 +45,9 @@ public class JwtService : IJwtService
 
     public JwtService(IConfiguration config)
     {
-        _key                = config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key no configurada.");
+        _key = config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key no configurada.");
+        if (_key.Length < 32)
+            throw new InvalidOperationException("Jwt:Key debe tener al menos 32 caracteres para HMAC-SHA256.");
         _issuer             = config["Jwt:Issuer"] ?? "ministock-api";
         _audience           = config["Jwt:Audience"] ?? "ministock-web";
         _accessTokenMinutes = int.TryParse(config["Jwt:AccessTokenMinutes"], out var m) ? m : 60;

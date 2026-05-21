@@ -35,6 +35,12 @@ public class Result
     /// <summary>Inverso de <see cref="IsSuccess"/>. Conveniente para condicionales.</summary>
     public bool IsFailure => !IsSuccess;
 
+    /// <summary>
+    /// <c>true</c> cuando el fallo se debe a un recurso no encontrado (HTTP 404).
+    /// Permite que los controllers elijan el status code sin comparar strings de error.
+    /// </summary>
+    public bool IsNotFound { get; private init; }
+
     protected Result(bool isSuccess, string? error)
     {
         IsSuccess = isSuccess;
@@ -45,13 +51,17 @@ public class Result
     public static Result Success() => new(true, null);
 
     /// <summary>Crea un resultado fallido con el mensaje de error de negocio.</summary>
-    public static Result Failure(string error) => new(false, error);
+    /// <param name="notFound">Marca el fallo como "recurso no encontrado" para mapeo HTTP 404.</param>
+    public static Result Failure(string error, bool notFound = false) =>
+        new(false, error) { IsNotFound = notFound };
 
     /// <summary>Crea un resultado exitoso con un valor de retorno tipado.</summary>
     public static Result<T> Success<T>(T value) => new(value, true, null);
 
     /// <summary>Crea un resultado fallido tipado (el valor será <c>null</c>/<c>default</c>).</summary>
-    public static Result<T> Failure<T>(string error) => new(default, false, error);
+    /// <param name="notFound">Marca el fallo como "recurso no encontrado" para mapeo HTTP 404.</param>
+    public static Result<T> Failure<T>(string error, bool notFound = false) =>
+        new(default, false, error) { IsNotFound = notFound };
 }
 
 /// <summary>

@@ -30,7 +30,7 @@ public class StockMovementsController : ControllerBase
 
         if (result.IsFailure)
         {
-            if (result.Error!.Contains("no encontrad")) return NotFound(new { error = result.Error });
+            if (result.IsNotFound) return NotFound(new { error = result.Error });
             return BadRequest(new { error = result.Error });
         }
 
