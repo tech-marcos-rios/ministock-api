@@ -58,7 +58,7 @@ public class ProductsController : ControllerBase
         var result = await _productService.UpdateAsync(id, request, ct);
         if (result.IsFailure)
         {
-            if (result.Error!.Contains("no encontrad")) return NotFound(new { error = result.Error });
+            if (result.IsNotFound) return NotFound(new { error = result.Error });
             return Conflict(new { error = result.Error });
         }
         return Ok(result.Value);

@@ -50,7 +50,7 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure<ProductResponse>("Producto no encontrado.");
+            return Result.Failure<ProductResponse>("Producto no encontrado.", notFound: true);
 
         return Result.Success(MapToResponse(product, product.Category.Name));
     }
@@ -59,11 +59,11 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure<ProductResponse>("Producto no encontrado.");
+            return Result.Failure<ProductResponse>("Producto no encontrado.", notFound: true);
 
         var category = await _categories.GetByIdAsync(request.CategoryId, ct);
         if (category is null)
-            return Result.Failure<ProductResponse>("Categoría no encontrada.");
+            return Result.Failure<ProductResponse>("Categoría no encontrada.", notFound: true);
 
         product.Update(request.Name, request.Description, request.Price, request.MinStock, request.CategoryId);
         _products.Update(product);
@@ -76,7 +76,7 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure("Producto no encontrado.");
+            return Result.Failure("Producto no encontrado.", notFound: true);
 
         product.Deactivate();
         _products.Update(product);
