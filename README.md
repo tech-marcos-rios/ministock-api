@@ -8,6 +8,8 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](https://www.docker.com)
+[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](api/MiniStock.Tests/)
+[![Coverage](https://img.shields.io/badge/coverage-83.6%25-brightgreen)](api/MiniStock.Tests/)
 
 ---
 
@@ -29,8 +31,10 @@
 4. [Pipeline CI/CD — `.github/` + `deploy/`](#4-pipeline-cicd--github--deploy)
 5. [Patrones y decisiones de diseño](#5-patrones-y-decisiones-de-diseño)
 6. [Estándares y buenas prácticas](#6-estándares-y-buenas-prácticas)
-7. [Setup local](#7-setup-local)
-8. [Endpoints de la API](#8-endpoints-de-la-api)
+7. [Tests](#7-tests)
+8. [Seguridad](#8-seguridad)
+9. [Setup local](#9-setup-local)
+10. [Endpoints de la API](#10-endpoints-de-la-api)
 
 ---
 
@@ -473,7 +477,69 @@ policy.WithOrigins(allowedOrigins)  // Solo Vercel, no "*"
 
 ---
 
-## 7. Setup local
+## 7. Tests
+
+El proyecto `api/MiniStock.Tests` contiene **102 tests unitarios** con **83.6 % de cobertura de líneas** (meta: 80 %).
+
+| Capa | Cobertura |
+|------|-----------|
+| Domain | 100 % |
+| Application | 81 % |
+| Infrastructure (JwtService) | 74.5 % |
+
+**Stack de testing:** xUnit + Moq + FluentAssertions + coverlet.
+
+Los repositorios de EF Core (Infrastructure.Persistence) se excluyen del coverage porque requieren integración contra una BD real — no tiene sentido mockear EF Core ya que eso no probaría nada útil. Lo que se testa unitariamente son los servicios (lógica de negocio), validadores, el patrón Result\<T\> y JwtService.
+
+**Técnica para navegar propiedades privadas en tests:**
+
+Las entidades tienen propiedades de navegación con setters privados (ej. `Product.Category`). Para setearlas en tests sin romper el encapsulamiento del dominio se usa reflexión:
+
+```csharp
+typeof(Product).GetProperty(nameof(Product.Category))!.SetValue(product, category);
+```
+
+Esto evita agregar setters públicos o constructores solo para tests.
+
+**Correr los tests:**
+
+```bash
+dotnet test MiniStock.sln --collect:"XPlat Code Coverage"
+```
+
+---
+
+## 8. Seguridad
+
+Vulnerabilidades identificadas y estado de mitigación:
+
+| Vulnerabilidad | Severidad | Estado |
+|---|---|---|
+| Brute force en `/auth/login` y `/auth/register` | Alta | ✅ Mitigado |
+| JWT key sin longitud mínima validada | Media | ✅ Mitigado |
+| Comparación frágil de strings en controllers | Baja | ✅ Mitigado |
+| Sin security headers HTTP en el frontend | Media | ✅ Mitigado |
+| JWT en localStorage (vulnerable a XSS) | Media | ⚠️ Aceptado — documentado en `auth.ts` |
+| Access token válido 60 min post-logout | Media | ⚠️ Trade-off inherente de JWT stateless |
+
+**Mitigaciones implementadas:**
+
+**Rate limiting (.NET 8 built-in):** los endpoints `/auth/login` y `/auth/register` aceptan máximo 10 requests por minuto por IP. Superar el límite retorna `HTTP 429 Too Many Requests`. No requiere dependencia externa — usa `Microsoft.AspNetCore.RateLimiting`.
+
+**Validación de JWT key en startup:** `JwtService` valida que la clave tenga al menos 32 caracteres (256 bits). Si la clave es corta, la app falla al arrancar con un mensaje descriptivo en lugar de generar tokens débiles silenciosamente.
+
+**`Result.IsNotFound` — routing de errores robusto:** los controllers ya no hacen `result.Error.Contains("no encontrad")` para decidir si devolver 404 o 409. Los servicios marcan `notFound: true` al crear fallos de "recurso no encontrado", y los controllers usan `result.IsNotFound`. Cambiar un mensaje de error ya no rompe el routing HTTP silenciosamente.
+
+**Security headers en Next.js (`next.config.mjs`):** aplicados en todas las rutas:
+- `X-Frame-Options: DENY` — previene clickjacking
+- `X-Content-Type-Options: nosniff` — previene MIME sniffing
+- `Content-Security-Policy` — restringe fuentes de scripts, estilos e imágenes a `'self'`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` — deshabilita acceso a cámara, micrófono y geolocalización
+
+---
+
+## 9. Setup local
 
 ### Requisitos
 
@@ -513,7 +579,7 @@ npm install && npm run dev
 
 ---
 
-## 8. Endpoints de la API
+## 10. Endpoints de la API
 
 Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 
@@ -521,8 +587,8 @@ Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 
 | Método | Ruta        | Body | Respuesta |
 |--------|-------------|------|-----------|
-| POST | `/register` | `{ name, email, password }` | `201` AuthResponse |
-| POST | `/login`    | `{ email, password }` | `200` AuthResponse |
+| POST | `/register` | `{ name, email, password }` | `201` AuthResponse \| `429` |
+| POST | `/login`    | `{ email, password }` | `200` AuthResponse \| `429` |
 | POST | `/refresh`  | `{ refreshToken }` | `200` AuthResponse |
 | POST | `/logout`   | — | `204` |
 
