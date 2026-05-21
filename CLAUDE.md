@@ -1,4 +1,4 @@
-# CLAUDE.md — inventory-api (MiniStock)
+# CLAUDE.md — ministock-api
 
 Este archivo se carga automáticamente en cada sesión de Claude Code dentro de esta carpeta.
 Define la arquitectura, estándares y convenciones del proyecto. **Todo el código nuevo debe seguirlos.**
