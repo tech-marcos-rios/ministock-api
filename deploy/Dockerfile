@@ -8,7 +8,7 @@ COPY api/MiniStock.Application/MiniStock.Application.csproj api/MiniStock.Applic
 COPY api/MiniStock.Infrastructure/MiniStock.Infrastructure.csproj api/MiniStock.Infrastructure/
 COPY api/MiniStock.Api/MiniStock.Api.csproj                 api/MiniStock.Api/
 
-RUN dotnet restore
+RUN dotnet restore api/MiniStock.Api/MiniStock.Api.csproj
 
 COPY . .
 
