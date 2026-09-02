@@ -1,5 +1,12 @@
 /** @type {import('next').NextConfig} */
 
+// El backend vive en otro origen (otro puerto/host que el frontend), así que
+// connect-src necesita permitirlo explícitamente además de 'self' — si no,
+// el CSP bloquea el fetch aunque CORS del lado del backend esté bien.
+const apiOrigin = process.env.NEXT_PUBLIC_API_URL
+  ? new URL(process.env.NEXT_PUBLIC_API_URL).origin
+  : "";
+
 const securityHeaders = [
   { key: "X-Frame-Options",        value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -13,7 +20,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      "connect-src 'self'",
+      `connect-src 'self' ${apiOrigin}`,
       "frame-ancestors 'none'",
     ].join("; "),
   },
