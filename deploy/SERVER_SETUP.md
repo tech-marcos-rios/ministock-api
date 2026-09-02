@@ -1,24 +1,25 @@
 # Configuración inicial del servidor Hetzner
 
-Ejecutar una sola vez al preparar el servidor.
+Ejecutar una sola vez al preparar el servidor. **Ya ejecutado el 2026-09-02** en `portfolio-hel1-1` (`2.29.23.254`) — este documento queda como referencia/histórico.
 
-## 1. Instalar dependencias (Ubuntu 22.04)
+## 1. Instalar dependencias (Ubuntu 26.04)
 
 ```bash
 apt update && apt upgrade -y
-apt install -y git curl ca-certificates
+apt install -y git curl ca-certificates ufw fail2ban
 
 # Docker
 curl -fsSL https://get.docker.com | sh
-usermod -aG docker $USER
+usermod -aG docker deploy
 ```
+
+Server hardening (usuario no-root `deploy`, `ufw`, `fail2ban`, swap) — ver `docs/INFRAESTRUCTURA.md` en la raíz de `D:\Code\projects` para el detalle completo del proceso.
 
 ## 2. Clonar el repositorio
 
 ```bash
-mkdir -p /opt/ministock
-cd /opt/ministock
-git clone https://github.com/tech-marcos-rios/ministock-api.git .
+sudo mkdir -p /opt/ministock && sudo chown deploy:deploy /opt/ministock
+git clone https://github.com/tech-marcos-rios/ministock-api.git /opt/ministock
 ```
 
 ## 3. Crear el archivo de secretos
@@ -31,6 +32,8 @@ CORS_ORIGINS=https://TU_FRONTEND.vercel.app
 EOF
 chmod 600 /opt/ministock/deploy/.env
 ```
+
+**Nota:** `CORS_ORIGINS` quedó en `http://localhost:3000` como placeholder hasta que el frontend de MiniStock tenga URL de Vercel definitiva — actualizar ese valor en el server (`/opt/ministock/deploy/.env`) antes de ir a producción real.
 
 ## 4. Primer deploy
 
@@ -52,8 +55,8 @@ Ir a: Settings → Secrets → Actions → New repository secret
 
 | Secret | Valor |
 |--------|-------|
-| `HETZNER_HOST` | `204.168.134.159` |
-| `HETZNER_USER` | `root` |
-| `HETZNER_SSH_KEY` | Clave privada SSH (sin passphrase) |
+| `HETZNER_HOST` | `2.29.23.254` |
+| `HETZNER_USER` | `deploy` |
+| `HETZNER_SSH_KEY` | Clave privada SSH dedicada (`p_portfolio_hetzner`, sin passphrase) |
 
-La clave pública correspondiente debe estar en `/root/.ssh/authorized_keys` en el servidor.
+La clave pública correspondiente (`p-portfolio-root`) ya está en `/home/deploy/.ssh/authorized_keys` en el servidor. **Root ya no acepta login por SSH** en este server — solo el usuario `deploy`.
