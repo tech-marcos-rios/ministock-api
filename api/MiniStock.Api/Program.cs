@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -26,22 +27,29 @@ try
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
-    var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "*").Split(',');
+    var allowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "http://localhost:3000").Split(',');
     builder.Services.AddCors(options =>
         options.AddDefaultPolicy(policy =>
             policy.WithOrigins(allowedOrigins)
                   .AllowAnyHeader()
                   .AllowAnyMethod()));
 
+    // Partición por IP real del cliente — sin esto, AddFixedWindowLimiter usa
+    // un único balde compartido por TODO internet (10/min para todos juntos,
+    // no 10/min por persona). La IP real depende de que ForwardedHeaders ya
+    // haya corrido (ver app.UseForwardedHeaders más abajo, antes de esto).
     builder.Services.AddRateLimiter(options =>
     {
-        options.AddFixedWindowLimiter("auth", config =>
-        {
-            config.PermitLimit             = 10;
-            config.Window                  = TimeSpan.FromMinutes(1);
-            config.QueueProcessingOrder    = QueueProcessingOrder.OldestFirst;
-            config.QueueLimit              = 0;
-        });
+        options.AddPolicy("auth", httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0
+                }));
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     });
 
@@ -90,6 +98,21 @@ try
     builder.Services.AddHealthChecks();
 
     var app = builder.Build();
+
+    // Caddy corre en el mismo host y le habla por localhost — desde el punto
+    // de vista de Kestrel, todos los requests vienen de esa IP interna a
+    // menos que confiemos en el X-Forwarded-For que agrega Caddy. Se limpian
+    // KnownNetworks/KnownProxies porque la IP del contenedor de Caddy no es
+    // fija; es seguro confiar en cualquier forwarded header acá porque el
+    // puerto de la API ya está atado a 127.0.0.1 — nadie más puede pegarle
+    // directo sin pasar por Caddy primero.
+    var forwardedHeadersOptions = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    };
+    forwardedHeadersOptions.KnownNetworks.Clear();
+    forwardedHeadersOptions.KnownProxies.Clear();
+    app.UseForwardedHeaders(forwardedHeadersOptions);
 
     using (var scope = app.Services.CreateScope())
     {

@@ -1,11 +1,16 @@
 /** @type {import('next').NextConfig} */
 
-// El backend vive en otro origen (otro puerto/host que el frontend), así que
-// connect-src necesita permitirlo explícitamente además de 'self' — si no,
-// el CSP bloquea el fetch aunque CORS del lado del backend esté bien.
-const apiOrigin = process.env.NEXT_PUBLIC_API_URL
-  ? new URL(process.env.NEXT_PUBLIC_API_URL).origin
-  : "";
+// Si NEXT_PUBLIC_API_URL es una URL absoluta (otro origen), connect-src
+// necesita permitirlo explícitamente además de 'self' — si no, el CSP
+// bloquea el fetch aunque CORS del backend esté bien. Si es relativa
+// (como "/api/v1", el caso normal: todo pasa por el proxy same-origin),
+// 'self' ya alcanza y no hay origen extra que agregar.
+let apiOrigin = "";
+try {
+  apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL ?? "").origin;
+} catch {
+  // URL relativa o no seteada — no hace falta origen extra en connect-src.
+}
 
 const securityHeaders = [
   { key: "X-Frame-Options",        value: "DENY" },
