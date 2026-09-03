@@ -95,11 +95,16 @@ try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
-        await DatabaseSeeder.SeedAsync(db);
+
+        if (app.Environment.IsDevelopment())
+            await DatabaseSeeder.SeedAsync(db);
     }
 
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniStock API v1"));
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "MiniStock API v1"));
+    }
 
     app.UseSerilogRequestLogging();
     app.UseRateLimiter();
