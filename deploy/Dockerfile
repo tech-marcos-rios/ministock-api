@@ -21,4 +21,8 @@ EXPOSE 8080
 
 COPY --from=build /app/publish .
 
+# No correr como root dentro del contenedor — la imagen base ya trae un
+# usuario sin privilegios listo para usar via la env var $APP_UID.
+USER $APP_UID
+
 ENTRYPOINT ["dotnet", "MiniStock.Api.dll"]
