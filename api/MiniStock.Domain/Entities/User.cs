@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace MiniStock.Domain.Entities;
 
 public class User : BaseEntity
@@ -29,6 +32,20 @@ public class User : BaseEntity
         SetUpdatedAt();
     }
 
-    public bool IsRefreshTokenValid(string token) =>
-        RefreshToken == token && RefreshTokenExpiresAt > DateTime.UtcNow;
+    public bool IsRefreshTokenValid(string token)
+    {
+        if (RefreshToken is null || RefreshTokenExpiresAt is null)
+            return false;
+
+        // Comparación en tiempo constante — == de string corta apenas
+        // encuentra el primer byte distinto, filtrando por timing cuánto
+        // del token adivinó un atacante. El token ya tiene 512 bits de
+        // entropía (CSPRNG), así que el riesgo real es bajo, pero es gratis
+        // sacarlo del todo.
+        var stored = Encoding.UTF8.GetBytes(RefreshToken);
+        var provided = Encoding.UTF8.GetBytes(token);
+        var isSameToken = stored.Length == provided.Length && CryptographicOperations.FixedTimeEquals(stored, provided);
+
+        return isSameToken && RefreshTokenExpiresAt > DateTime.UtcNow;
+    }
 }
