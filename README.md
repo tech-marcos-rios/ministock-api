@@ -1,6 +1,6 @@
 # MiniStock — Sistema de Gestión de Inventario
 
-**Demo en vivo:** https://web-ochre-zeta-22.vercel.app &nbsp;·&nbsp; **API Swagger:** http://204.168.134.159:5010/swagger
+**Demo en vivo:** https://ministock.marcosrios.dev &nbsp;·&nbsp; **API:** https://api.ministock.marcosrios.dev
 
 > Sistema fullstack de inventario con autenticación JWT, CRUD completo y dashboard de métricas en tiempo real. Desarrollado como proyecto de portfolio para demostrar arquitectura production-ready en .NET 8 + Next.js 14.
 
@@ -19,7 +19,7 @@
 |:---------:|:---------:|:-----------:|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Productos](docs/screenshots/productos.png) | ![Movimientos](docs/screenshots/movimientos.png) |
 
-**Credenciales demo:** `admin@ministock.com` / `Admin123!`
+Registrate con tu propio usuario desde la demo para probarlo — el registro es libre y no requiere aprobación.
 
 ---
 
@@ -49,10 +49,10 @@
 │  │  (server-side, Node.js)                          │  │
 │  └──────────────────┬───────────────────────────────┘  │
 └─────────────────────┼───────────────────────────────────┘
-                      │ HTTP (server-to-server, sin CORS)
+                      │ HTTPS (server-to-server, sin CORS)
 ┌─────────────────────▼───────────────────────────────────┐
-│  .NET 8 API — Hetzner :5010                             │
-│  Docker Container                                       │
+│  .NET 8 API — api.ministock.marcosrios.dev (HTTPS)      │
+│  Caddy → Docker Container                               │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │  ASP.NET Core Web API                            │  │
 │  │  Clean Architecture (4 capas)                    │  │
@@ -65,7 +65,7 @@
 ```
 
 **Por qué este diseño:**
-- El frontend necesita ser HTTPS (Vercel lo provee gratis). La API en Hetzner es HTTP porque no tiene dominio asignado aún. El browser bloquearía llamadas HTTPS → HTTP (*mixed-content*). El proxy Route Handler resuelve esto haciendo la llamada HTTP desde el servidor de Vercel, invisible para el browser.
+- El proxy Route Handler nació para resolver *mixed-content*: durante la primera etapa, la API vivía sin dominio propio en `IP:5010` (HTTP), y el browser bloquea llamadas HTTPS → HTTP. Hoy la API tiene su propio subdominio con HTTPS vía Caddy, pero el proxy se mantiene porque simplifica el cliente (mismo origen, sin configurar CORS por endpoint) y oculta el origen real del backend.
 - Separar frontend y backend en hosts distintos permite escalarlos independientemente y usar la plataforma óptima para cada uno (Vercel para CDN global, VPS para la API con acceso a BD).
 
 ---
@@ -299,7 +299,7 @@ Los componentes de página nunca llaman a `api.get(...)` directamente. Consumen 
 ### Proxy Route Handler
 
 ```
-Browser → /api/v1/products → Vercel → http://204.168.134.159:5010/api/v1/products
+Browser → /api/v1/products → Vercel → https://api.ministock.marcosrios.dev/api/v1/products
 ```
 
 El archivo `app/api/v1/[...path]/route.ts` intercepta cualquier request que comience con `/api/v1/` y lo reenvía al backend. Los headers `hop-by-hop` (`host`, `connection`, `transfer-encoding`, `content-length`, `expect`) se excluyen porque:
@@ -634,4 +634,4 @@ Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 ## Autor
 
 **Marcos Ríos** — Desarrollador Fullstack .NET / Next.js  
-[Portfolio](https://portfolio-web-drab-ten.vercel.app/) · [LinkedIn](https://www.linkedin.com/in/marcos-sebasti%C3%A1n-r%C3%ADos-359b717/) · [GitHub](https://github.com/tech-marcos-rios)
+[Portfolio](https://marcosrios.dev) · [LinkedIn](https://www.linkedin.com/in/marcos-sebasti%C3%A1n-r%C3%ADos-359b717/) · [GitHub](https://github.com/tech-marcos-rios)
