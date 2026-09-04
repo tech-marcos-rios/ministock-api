@@ -436,6 +436,15 @@ chore(deploy): add .dockerignore to reduce build context
 
 Forzado mediante un hook de Git en `.githooks/commit-msg`. Facilita la generación de changelogs automáticos y hace el historial legible para cualquier colaborador.
 
+### Git Flow
+
+- `main` — producción. Protegida en GitHub: requiere PR + el check de CI (`build-and-test`) en verde, sin push directo ni force-push (ni siquiera para admins).
+- `develop` — integración, rama default del repo. Misma protección que `main`.
+- `feature/*` / `fix/*` / `chore/*` — ramas de trabajo, se mergean a `develop` vía PR.
+- `release/*` / `hotfix/*` — promueven `develop` a `main`.
+- `ci.yml` corre build + test en cada PR hacia `main` o `develop`; `deploy.yml` sigue disparando el deploy a Hetzner solo en push a `main`.
+- `pull_request_template.md` trae el checklist de esta sección para cada PR.
+
 ### Validación en dos capas
 
 1. **Frontend**: validación visual básica (campos requeridos, tipos). Feedback inmediato al usuario.
