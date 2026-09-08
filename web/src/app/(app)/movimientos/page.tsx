@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { Plus, X, ChevronLeft, ChevronRight, Loader2, ArrowDownCircle, ArrowUpCircle, RefreshCw } from "lucide-react";
+import { Plus, Loader2, ArrowDownCircle, ArrowUpCircle, RefreshCw } from "lucide-react";
 import { useMovements, useRegisterMovement, type MovementType } from "@/hooks/useMovements";
 import { useCategoriesAll } from "@/hooks/useCategories";
 import { useProducts } from "@/hooks/useProducts";
+import { getErrorMessage } from "@/lib/errors";
+import { Modal } from "@/components/ui/Modal";
+import { Pagination } from "@/components/ui/Pagination";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -76,10 +79,7 @@ export default function MovimientosPage() {
       });
       closeModal();
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        "Ocurrió un error. Intentá de nuevo.";
-      setFormError(msg);
+      setFormError(getErrorMessage(err));
     }
   }
 
@@ -163,143 +163,119 @@ export default function MovimientosPage() {
           </table>
         )}
 
-        {data && data.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <span className="text-xs text-gray-500">
-              {data.totalCount} movimientos · página {data.page} de {data.totalPages}
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={() => setPage((p) => p - 1)}
-                disabled={!data.hasPreviousPage}
-                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={!data.hasNextPage}
-                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
+        {data && (
+          <Pagination
+            page={data.page}
+            totalPages={data.totalPages}
+            totalCount={data.totalCount}
+            hasPreviousPage={data.hasPreviousPage}
+            hasNextPage={data.hasNextPage}
+            onPageChange={setPage}
+            itemLabel="movimientos"
+          />
         )}
       </div>
 
       {/* Modal registrar movimiento */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-800">Registrar movimiento</h3>
-              <button
-                onClick={closeModal}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+        <Modal title="Registrar movimiento" onClose={closeModal}>
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Producto <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                value={form.productId}
+                onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
-                <X size={18} />
-              </button>
+                <option value="">Seleccioná un producto…</option>
+                {allProducts?.items.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.sku}) — stock: {p.stock}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Producto <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={form.productId}
-                  onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="">Seleccioná un producto…</option>
-                  {allProducts?.items.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.sku}) — stock: {p.stock}
-                    </option>
-                  ))}
-                </select>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Tipo <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {([1, 2, 3] as MovementType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, type: t }))}
+                    className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      form.type === t
+                        ? MOVEMENT_STYLES[t] + " border"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {MOVEMENT_LABELS[t]}
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Tipo <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {([1, 2, 3] as MovementType[]).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, type: t }))}
-                      className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        form.type === t
-                          ? MOVEMENT_STYLES[t] + " border"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {MOVEMENT_LABELS[t]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Cantidad <span className="text-red-500">*</span>
-                </label>
-                <input
-                  required
-                  type="number"
-                  min="1"
-                  value={form.quantity}
-                  onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0"
-                />
-                {form.type === 3 && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    En ajuste, ingresá el valor absoluto. Si hay pérdida el sistema descuenta.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
-                <textarea
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="Motivo del movimiento…"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
-              </div>
-
-              {formError && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {formError}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Cantidad <span className="text-red-500">*</span>
+              </label>
+              <input
+                required
+                type="number"
+                min="1"
+                value={form.quantity}
+                onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0"
+              />
+              {form.type === 3 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  En ajuste, ingresá el valor absoluto. Si hay pérdida el sistema descuenta.
                 </p>
               )}
+            </div>
 
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={registerMutation.isPending}
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
-                >
-                  {registerMutation.isPending ? "Registrando…" : "Registrar"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
+              <textarea
+                rows={2}
+                value={form.notes}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Motivo del movimiento…"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+
+            {formError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {formError}
+              </p>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={registerMutation.isPending}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              >
+                {registerMutation.isPending ? "Registrando…" : "Registrar"}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

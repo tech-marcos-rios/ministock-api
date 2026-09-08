@@ -1,4 +1,3 @@
-using Mapster;
 using MiniStock.Application.Common;
 using MiniStock.Application.DTOs.Dashboard;
 using MiniStock.Application.DTOs.Products;
@@ -7,7 +6,7 @@ using MiniStock.Application.Interfaces;
 
 namespace MiniStock.Application.Services;
 
-public class DashboardService
+public class DashboardService : IDashboardService
 {
     private readonly IDashboardRepository _dashboard;
     private readonly IProductRepository _products;
@@ -58,12 +57,8 @@ public class DashboardService
     {
         if (count is < 1 or > 50) count = 10;
         var list = await _movements.GetRecentAsync(count, ct);
-        
-        var dtos = list.Select(m => new StockMovementResponse(
-            m.Id, m.Product.Id, m.Product.Name, m.Product.SKU, 
-            m.Quantity, m.Type, m.Notes,
-            m.CreatedById, m.CreatedBy?.Name ?? "Sistema", m.CreatedAt
-        )).ToList();
+
+        var dtos = list.Select(m => StockMovementService.MapToResponse(m, m.Product)).ToList();
 
         return Result.Success<IReadOnlyList<StockMovementResponse>>(dtos);
     }

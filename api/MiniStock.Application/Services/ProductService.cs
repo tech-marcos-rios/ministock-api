@@ -5,7 +5,7 @@ using MiniStock.Domain.Entities;
 
 namespace MiniStock.Application.Services;
 
-public class ProductService
+public class ProductService : IProductService
 {
     private readonly IProductRepository _products;
     private readonly ICategoryRepository _categories;
@@ -21,11 +21,11 @@ public class ProductService
     public async Task<Result<ProductResponse>> CreateAsync(CreateProductRequest request, CancellationToken ct = default)
     {
         if (await _products.ExistsBySkuAsync(request.SKU, ct))
-            return Result.Failure<ProductResponse>($"Ya existe un producto con el SKU '{request.SKU}'.");
+            return Result.Failure<ProductResponse>($"Ya existe un producto con el SKU '{request.SKU}'.", ErrorType.Conflict);
 
         var category = await _categories.GetByIdAsync(request.CategoryId, ct);
         if (category is null)
-            return Result.Failure<ProductResponse>("Categoría no encontrada.");
+            return Result.Failure<ProductResponse>("Categoría no encontrada.", ErrorType.NotFound);
 
         var product = Product.Create(request.Name, request.SKU, request.Price, request.InitialStock, request.MinStock, request.CategoryId, request.Description);
         await _products.AddAsync(product, ct);
@@ -50,7 +50,7 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure<ProductResponse>("Producto no encontrado.", notFound: true);
+            return Result.Failure<ProductResponse>("Producto no encontrado.", ErrorType.NotFound);
 
         return Result.Success(MapToResponse(product, product.Category.Name));
     }
@@ -59,11 +59,11 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure<ProductResponse>("Producto no encontrado.", notFound: true);
+            return Result.Failure<ProductResponse>("Producto no encontrado.", ErrorType.NotFound);
 
         var category = await _categories.GetByIdAsync(request.CategoryId, ct);
         if (category is null)
-            return Result.Failure<ProductResponse>("Categoría no encontrada.", notFound: true);
+            return Result.Failure<ProductResponse>("Categoría no encontrada.", ErrorType.NotFound);
 
         product.Update(request.Name, request.Description, request.Price, request.MinStock, request.CategoryId);
         _products.Update(product);
@@ -76,7 +76,7 @@ public class ProductService
     {
         var product = await _products.GetByIdAsync(id, ct);
         if (product is null)
-            return Result.Failure("Producto no encontrado.", notFound: true);
+            return Result.Failure("Producto no encontrado.", ErrorType.NotFound);
 
         product.Deactivate();
         _products.Update(product);

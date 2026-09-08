@@ -46,7 +46,7 @@ public class AuthServiceTests
               });
 
         var request = new RegisterRequest("Marcos", "marcos@test.com", "Password123!");
-        var result  = await _sut.RegisterAsync(request, RoleId);
+        var result  = await _sut.RegisterAsync(request);
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.AccessToken.Should().Be("access-token-mock");
@@ -59,7 +59,7 @@ public class AuthServiceTests
         _users.Setup(r => r.ExistsByEmailAsync("marcos@test.com", default)).ReturnsAsync(true);
 
         var request = new RegisterRequest("Marcos", "marcos@test.com", "Password123!");
-        var result  = await _sut.RegisterAsync(request, RoleId);
+        var result  = await _sut.RegisterAsync(request);
 
         result.IsFailure.Should().BeTrue();
         result.Error.Should().Contain("Ya existe");

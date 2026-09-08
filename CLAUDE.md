@@ -9,7 +9,44 @@ Define la arquitectura, estándares y convenciones del proyecto. **Todo el códi
 
 **MiniStock** — sistema de gestión de inventario para pymes.
 Stack: .NET 8 Web API + Next.js 14 (App Router) + PostgreSQL.
-Deploy: backend en Hetzner :5010 (Docker), frontend en Vercel.
+
+---
+
+## Deploy
+
+| Recurso | URL |
+|---|---|
+| Frontend | https://ministock.marcosrios.dev (Vercel) |
+| API | https://api.ministock.marcosrios.dev |
+| API directa | Hetzner (server `portfolio-hel1-1`) puerto `:5010`, Docker |
+
+CI/CD: GitHub Actions (push → build → deploy). Estado: completo y deployado.
+
+---
+
+## Pendientes
+
+- Grabar video Loom de 90s con la demo (dashboard + CRUD de productos) y subirlo.
+- Bump de Next.js 14→16 en `web/` — requiere `npm audit fix --force` (breaking cambios), dejado afuera a propósito de la auditoría de seguridad para no mezclarlo con fixes de seguridad. Hacerlo como migración aparte, con testing dedicado.
+- Actualizar `CORS_ORIGINS` en el `.env` del server si todavía apunta a `http://localhost:3000` en vez de la URL real de Vercel/dominio propio.
+- Tests de integración con `WebApplicationFactory<Program>` (ver sección "Tests" más abajo) — hoy solo hay tests unitarios (services con mocks, algunos con EF Core InMemory). No hay ningún test que levante la API completa end-to-end.
+
+### Mejoras de buenas prácticas y SOLID (revisión 2026-09-07, resuelta en `refactor/solid-cleanup`)
+
+Backend (.NET):
+- [x] **DIP** — Los 5 servicios de `Application/Services/` ahora implementan una interfaz (`IProductService`, `ICategoryService`, `IStockMovementService`, `IDashboardService`, `IAuthService`) y los controllers inyectan la interfaz.
+- [x] **Regla de dependencia rota** — el id del rol por defecto se movió a `Role.WellKnownIds` en Domain; `AuthController` ya no referencia `MiniStock.Infrastructure` en absoluto.
+- [x] **`Result` con tipo de error débil** — reemplazado por `Result.Type: ErrorType` (`Validation`/`NotFound`/`Conflict`/`Unauthorized`), mapeado a status code por `ResultExtensions.ToActionResult()` en la capa Api (ver "Result Pattern" más abajo).
+- [x] **Status code inconsistente** — `ProductService.CreateAsync` con categoría inexistente ahora devuelve 404, no 409.
+- [x] **DRY** — el mapeo `StockMovement → StockMovementResponse` está unificado en `StockMovementService.MapToResponse` (compartido con `DashboardService`).
+- [x] **Regla de negocio** — `ProductRepository.ExistsBySkuAsync` ahora solo considera productos activos; el SKU de un producto dado de baja se puede reutilizar.
+- [x] `AuthController.Register` ya no usa `CreatedAtAction` apuntando a sí mismo; devuelve `201` directo.
+- [x] **Validación no conectada** (encontrado durante la implementación, no estaba en la revisión original) — los validators de FluentValidation estaban registrados en DI pero nunca se invocaban en ningún lado; la API aceptaba cualquier payload sin validar. Se agregó `ValidationFilter` (`IAsyncActionFilter` global) que corre el `IValidator<T>` de cada argumento antes del controller.
+- [x] Excepciones no controladas → `GlobalExceptionHandler` (`IExceptionHandler` nativo de .NET 8) devuelve `ProblemDetails` 500 sin stack trace fuera de `Development`.
+- [x] Mapster estaba registrado en DI (`IMapper`, `TypeAdapterConfig`) sin un solo uso real en el código — eliminado.
+
+Frontend (Next.js):
+- [x] **DRY entre páginas** — `productos/page.tsx`, `categorias/page.tsx` y `movimientos/page.tsx` ahora comparten `<Modal>`, `<ConfirmDialog>` y `<Pagination>` (`web/src/components/ui/`), el hook `useDebouncedValue` y el helper `getErrorMessage` (`web/src/lib/errors.ts`).
 
 ---
 
@@ -67,18 +104,27 @@ public interface IProductRepository
 Fuente: [Andrew Lock — Working with the Result Pattern](https://andrewlock.net/series/working-with-the-result-pattern/)
 
 - Los casos de uso retornan `Result<T>` o `Result`, nunca lanzan excepciones de negocio.
-- Las excepciones se reservan para errores inesperados (infraestructura, bugs).
-- TODO: agregar `GlobalExceptionMiddleware` para convertir excepciones no controladas en respuestas HTTP 500.
+- Las excepciones se reservan para errores inesperados (infraestructura, bugs) — `GlobalExceptionHandler`
+  (`MiniStock.Api/GlobalExceptionHandler.cs`, `IExceptionHandler` nativo de .NET 8) las convierte en un
+  `ProblemDetails` 500 sin filtrar detalles fuera de `Development`.
+- Cada `Result.Failure(...)` fallido lleva un `ErrorType` (`Validation` / `NotFound` / `Conflict` / `Unauthorized`).
+  Los controllers **nunca** eligen el status code a mano ni comparan el string del error — usan
+  `result.ToActionResult()` (`MiniStock.Api/Extensions/ResultExtensions.cs`), que centraliza el mapeo
+  `ErrorType → status code + ProblemDetails` una sola vez.
 
 ```csharp
 // Correcto
-public async Task<Result<ProductDto>> Handle(CreateProductCommand cmd, CancellationToken ct)
+public async Task<Result<ProductDto>> CreateAsync(CreateProductCommand cmd, CancellationToken ct)
 {
     if (await _repo.ExistsByNameAsync(cmd.Name, ct))
-        return Result.Failure<ProductDto>("Ya existe un producto con ese nombre.");
+        return Result.Failure<ProductDto>("Ya existe un producto con ese nombre.", ErrorType.Conflict);
     // ...
     return Result.Success(dto);
 }
+
+// En el controller
+var result = await _service.CreateAsync(cmd, ct);
+return result.ToActionResult(value => CreatedAtAction(nameof(GetById), new { id = value.Id }, value));
 
 // Incorrecto — no lanzar BusinessException para flujo normal
 throw new BusinessException("Ya existe...");
@@ -89,12 +135,10 @@ Fuente: [FluentValidation — documentación oficial](https://fluentvalidation.n
 
 - Un `AbstractValidator<TCommand>` por cada Command/Query en `Application/Validators/`.
 - Registrar con `AddValidatorsFromAssembly` en el DI.
-- Los controllers no validan manualmente: el middleware de validación lo hace antes de llegar al handler.
-
-### Mapeo con Mapster
-- Configuración global en `Application/DependencyInjection.cs` via `TypeAdapterConfig`.
-- Mapeos simples se resuelven por convención (mismo nombre de propiedad).
-- Nunca mapear en el controller ni en el repositorio.
+- Los controllers no validan manualmente: `ValidationFilter` (`MiniStock.Api/Filters/ValidationFilter.cs`,
+  registrado globalmente en `Program.cs`) resuelve el `IValidator<T>` de cada argumento y corta con 400 antes
+  de llegar al controller/servicio si falla. **Importante**: `AddValidatorsFromAssembly` solo registra los
+  validators en DI — sin este filtro (u otro mecanismo que los invoque) no se ejecutan nunca.
 
 ---
 
@@ -140,13 +184,24 @@ Fuente: [Microsoft — Web API Design Best Practices](https://learn.microsoft.co
 - Versioning en URL: `/api/v1/products`.
 - HTTP status codes semánticos: 200, 201, 204, 400, 401, 403, 404, 409, 500.
 - Paginación con query params: `?page=1&size=20&search=termo`.
-- Respuesta de error estandarizada:
+- Respuesta de error estandarizada: [`ProblemDetails`](https://learn.microsoft.com/en-us/aspnet/core/web-api/handle-errors) (RFC 7807), el estándar nativo de ASP.NET Core — no un formato propio. Errores de negocio y excepciones no controladas devuelven `status`/`title`/`detail`; los fallos de validación de FluentValidation devuelven además `errors` (diccionario campo → mensajes), vía `ValidationProblemDetails`:
 
 ```json
+// Error de negocio o excepción no controlada (ResultExtensions / GlobalExceptionHandler)
+{
+  "status": 404,
+  "title": "Resource not found",
+  "detail": "Categoría no encontrada."
+}
+
+// Fallo de validación (ValidationFilter)
 {
   "status": 400,
   "title": "Validation error",
-  "errors": ["El nombre es requerido", "El precio debe ser mayor a 0"]
+  "errors": {
+    "Name": ["'Name' must not be empty."],
+    "Price": ["'Price' must be greater than '0'."]
+  }
 }
 ```
 
