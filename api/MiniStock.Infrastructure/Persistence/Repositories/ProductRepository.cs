@@ -46,8 +46,10 @@ public class ProductRepository : IProductRepository
         return list;
     }
 
+    // Solo cuenta productos activos: el SKU de un producto dado de baja (soft delete) queda
+    // libre para reutilizarse, ya que un producto inactivo es lógicamente "borrado".
     public Task<bool> ExistsBySkuAsync(string sku, CancellationToken ct) =>
-        _context.Products.AnyAsync(p => p.SKU == sku, ct);
+        _context.Products.AnyAsync(p => p.SKU == sku && p.IsActive, ct);
 
     public async Task AddAsync(Product product, CancellationToken ct) =>
         await _context.Products.AddAsync(product, ct);

@@ -5,7 +5,7 @@ using MiniStock.Domain.Entities;
 
 namespace MiniStock.Application.Services;
 
-public class AuthService
+public class AuthService : IAuthService
 {
     private readonly IUserRepository _users;
     private readonly IUnitOfWork _uow;
@@ -18,13 +18,13 @@ public class AuthService
         _jwt = jwt;
     }
 
-    public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request, Guid defaultRoleId, CancellationToken ct = default)
+    public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
         if (await _users.ExistsByEmailAsync(request.Email, ct))
-            return Result.Failure<AuthResponse>("Ya existe una cuenta con ese email.");
+            return Result.Failure<AuthResponse>("Ya existe una cuenta con ese email.", ErrorType.Conflict);
 
         var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-        var user = User.Create(request.Name, request.Email, passwordHash, defaultRoleId);
+        var user = User.Create(request.Name, request.Email, passwordHash, Role.WellKnownIds.UserRoleId);
 
         var refreshToken = _jwt.GenerateRefreshToken();
         user.SetRefreshToken(refreshToken, _jwt.RefreshTokenExpiresAt());
@@ -43,7 +43,7 @@ public class AuthService
         var user = await _users.GetByEmailAsync(request.Email, ct);
 
         if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-            return Result.Failure<AuthResponse>("Credenciales incorrectas.");
+            return Result.Failure<AuthResponse>("Credenciales incorrectas.", ErrorType.Unauthorized);
 
         var accessToken = _jwt.GenerateAccessToken(user);
         var refreshToken = _jwt.GenerateRefreshToken();
@@ -60,7 +60,7 @@ public class AuthService
         var user = await _users.GetByRefreshTokenAsync(request.RefreshToken, ct);
 
         if (user is null || !user.IsRefreshTokenValid(request.RefreshToken))
-            return Result.Failure<AuthResponse>("Refresh token inválido o expirado.");
+            return Result.Failure<AuthResponse>("Refresh token inválido o expirado.", ErrorType.Unauthorized);
 
         var accessToken = _jwt.GenerateAccessToken(user);
         var newRefreshToken = _jwt.GenerateRefreshToken();
@@ -75,7 +75,7 @@ public class AuthService
     public async Task<Result> LogoutAsync(Guid userId, CancellationToken ct = default)
     {
         var user = await _users.GetByIdAsync(userId, ct);
-        if (user is null) return Result.Failure("Usuario no encontrado.");
+        if (user is null) return Result.Failure("Usuario no encontrado.", ErrorType.NotFound);
 
         user.RevokeRefreshToken();
         _users.Update(user);

@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MiniStock.Api.Extensions;
 using MiniStock.Application.Common;
 using MiniStock.Application.DTOs.Categories;
-using MiniStock.Application.Services;
+using MiniStock.Application.Interfaces;
 
 namespace MiniStock.Api.Controllers;
 
@@ -11,9 +12,9 @@ namespace MiniStock.Api.Controllers;
 [Authorize]
 public class CategoriesController : ControllerBase
 {
-    private readonly CategoryService _categoryService;
+    private readonly ICategoryService _categoryService;
 
-    public CategoriesController(CategoryService categoryService) => _categoryService = categoryService;
+    public CategoriesController(ICategoryService categoryService) => _categoryService = categoryService;
 
     [HttpGet]
     [ProducesResponseType(typeof(PagedResult<CategoryResponse>), StatusCodes.Status200OK)]
@@ -24,7 +25,7 @@ public class CategoriesController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _categoryService.GetPagedAsync(page, pageSize, search, ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     // Endpoint sin paginación para poblar dropdowns en el frontend
@@ -33,7 +34,7 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> GetAllActive(CancellationToken ct)
     {
         var result = await _categoryService.GetAllActiveAsync(ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpGet("{id:guid}")]
@@ -42,8 +43,7 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await _categoryService.GetByIdAsync(id, ct);
-        if (result.IsFailure) return NotFound(new { error = result.Error });
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpPost]
@@ -52,8 +52,7 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateCategoryRequest request, CancellationToken ct)
     {
         var result = await _categoryService.CreateAsync(request, ct);
-        if (result.IsFailure) return Conflict(new { error = result.Error });
-        return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value);
+        return result.ToActionResult(value => CreatedAtAction(nameof(GetById), new { id = value.Id }, value));
     }
 
     [HttpPut("{id:guid}")]
@@ -63,12 +62,7 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken ct)
     {
         var result = await _categoryService.UpdateAsync(id, request, ct);
-        if (result.IsFailure)
-        {
-            if (result.Error!.Contains("no encontrad")) return NotFound(new { error = result.Error });
-            return Conflict(new { error = result.Error });
-        }
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpDelete("{id:guid}")]
@@ -77,7 +71,6 @@ public class CategoriesController : ControllerBase
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
         var result = await _categoryService.DeactivateAsync(id, ct);
-        if (result.IsFailure) return NotFound(new { error = result.Error });
-        return NoContent();
+        return result.ToActionResult();
     }
 }

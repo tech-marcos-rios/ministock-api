@@ -23,7 +23,7 @@ namespace MiniStock.Application.Services;
 /// dejaría la BD en un estado inconsistente (stock actualizado sin movimiento, o viceversa).
 /// EF Core garantiza esto porque ambos cambios se envían en la misma transacción implícita.
 /// </remarks>
-public class StockMovementService
+public class StockMovementService : IStockMovementService
 {
     private readonly IStockMovementRepository _movements;
     private readonly IProductRepository _products;
@@ -49,7 +49,7 @@ public class StockMovementService
     {
         var product = await _products.GetByIdAsync(request.ProductId, ct);
         if (product is null)
-            return Result.Failure<StockMovementResponse>("Producto no encontrado.", notFound: true);
+            return Result.Failure<StockMovementResponse>("Producto no encontrado.", ErrorType.NotFound);
 
         if (!product.IsActive)
             return Result.Failure<StockMovementResponse>("No se pueden registrar movimientos en un producto inactivo.");
@@ -102,7 +102,11 @@ public class StockMovementService
             list.Select(m => MapToResponse(m, m.Product)).ToList());
     }
 
-    private static StockMovementResponse MapToResponse(StockMovement m, Product p) =>
+    /// <summary>
+    /// Mapeo compartido con <see cref="DashboardService.GetRecentMovementsAsync"/> — evita que
+    /// las dos formas de armar un <see cref="StockMovementResponse"/> diverjan con el tiempo.
+    /// </summary>
+    internal static StockMovementResponse MapToResponse(StockMovement m, Product p) =>
         new(m.Id, p.Id, p.Name, p.SKU, m.Quantity, m.Type, m.Notes,
             m.CreatedById, m.CreatedBy?.Name ?? "Sistema", m.CreatedAt);
 }

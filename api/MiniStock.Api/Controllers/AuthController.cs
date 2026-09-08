@@ -2,8 +2,9 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using MiniStock.Api.Extensions;
 using MiniStock.Application.DTOs.Auth;
-using MiniStock.Application.Services;
+using MiniStock.Application.Interfaces;
 
 namespace MiniStock.Api.Controllers;
 
@@ -11,9 +12,9 @@ namespace MiniStock.Api.Controllers;
 [Route("api/v1/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly AuthService _authService;
+    private readonly IAuthService _authService;
 
-    public AuthController(AuthService authService) => _authService = authService;
+    public AuthController(IAuthService authService) => _authService = authService;
 
     [HttpPost("register")]
     [EnableRateLimiting("auth")]
@@ -22,13 +23,8 @@ public class AuthController : ControllerBase
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
-        var defaultRoleId = MiniStock.Infrastructure.Persistence.Configurations.RoleConfiguration.UserRoleId;
-        var result = await _authService.RegisterAsync(request, defaultRoleId, ct);
-
-        if (result.IsFailure)
-            return Conflict(new { error = result.Error });
-
-        return CreatedAtAction(nameof(Register), result.Value);
+        var result = await _authService.RegisterAsync(request, ct);
+        return result.ToActionResult(value => StatusCode(StatusCodes.Status201Created, value));
     }
 
     [HttpPost("login")]
@@ -39,11 +35,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
         var result = await _authService.LoginAsync(request, ct);
-
-        if (result.IsFailure)
-            return Unauthorized(new { error = result.Error });
-
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpPost("refresh")]
@@ -52,11 +44,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest request, CancellationToken ct)
     {
         var result = await _authService.RefreshAsync(request, ct);
-
-        if (result.IsFailure)
-            return Unauthorized(new { error = result.Error });
-
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpPost("logout")]
@@ -68,7 +56,7 @@ public class AuthController : ControllerBase
             ?? User.FindFirstValue("sub")
             ?? throw new InvalidOperationException());
 
-        await _authService.LogoutAsync(userId, ct);
-        return NoContent();
+        var result = await _authService.LogoutAsync(userId, ct);
+        return result.ToActionResult();
     }
 }

@@ -5,7 +5,7 @@ using MiniStock.Domain.Entities;
 
 namespace MiniStock.Application.Services;
 
-public class CategoryService
+public class CategoryService : ICategoryService
 {
     private readonly ICategoryRepository _categories;
     private readonly IProductRepository _products;
@@ -21,7 +21,7 @@ public class CategoryService
     public async Task<Result<CategoryResponse>> CreateAsync(CreateCategoryRequest request, CancellationToken ct = default)
     {
         if (await _categories.ExistsByNameAsync(request.Name, ct))
-            return Result.Failure<CategoryResponse>($"Ya existe una categoría con el nombre '{request.Name}'.");
+            return Result.Failure<CategoryResponse>($"Ya existe una categoría con el nombre '{request.Name}'.", ErrorType.Conflict);
 
         var category = Category.Create(request.Name, request.Description);
         await _categories.AddAsync(category, ct);
@@ -53,7 +53,7 @@ public class CategoryService
     {
         var category = await _categories.GetByIdAsync(id, ct);
         if (category is null)
-            return Result.Failure<CategoryResponse>("Categoría no encontrada.");
+            return Result.Failure<CategoryResponse>("Categoría no encontrada.", ErrorType.NotFound);
 
         return Result.Success(MapToResponse(category, category.Products.Count));
     }
@@ -62,11 +62,11 @@ public class CategoryService
     {
         var category = await _categories.GetByIdAsync(id, ct);
         if (category is null)
-            return Result.Failure<CategoryResponse>("Categoría no encontrada.");
+            return Result.Failure<CategoryResponse>("Categoría no encontrada.", ErrorType.NotFound);
 
         if (!string.Equals(category.Name, request.Name, StringComparison.OrdinalIgnoreCase) &&
             await _categories.ExistsByNameAsync(request.Name, ct))
-            return Result.Failure<CategoryResponse>($"Ya existe una categoría con el nombre '{request.Name}'.");
+            return Result.Failure<CategoryResponse>($"Ya existe una categoría con el nombre '{request.Name}'.", ErrorType.Conflict);
 
         category.Update(request.Name, request.Description);
         _categories.Update(category);
@@ -79,7 +79,7 @@ public class CategoryService
     {
         var category = await _categories.GetByIdAsync(id, ct);
         if (category is null)
-            return Result.Failure("Categoría no encontrada.");
+            return Result.Failure("Categoría no encontrada.", ErrorType.NotFound);
 
         category.Deactivate();
         _categories.Update(category);

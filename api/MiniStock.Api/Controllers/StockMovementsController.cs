@@ -1,9 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MiniStock.Api.Extensions;
 using MiniStock.Application.Common;
 using MiniStock.Application.DTOs.StockMovements;
-using MiniStock.Application.Services;
+using MiniStock.Application.Interfaces;
 
 namespace MiniStock.Api.Controllers;
 
@@ -12,9 +13,9 @@ namespace MiniStock.Api.Controllers;
 [Authorize]
 public class StockMovementsController : ControllerBase
 {
-    private readonly StockMovementService _service;
+    private readonly IStockMovementService _service;
 
-    public StockMovementsController(StockMovementService service) => _service = service;
+    public StockMovementsController(IStockMovementService service) => _service = service;
 
     [HttpPost]
     [ProducesResponseType(typeof(StockMovementResponse), StatusCodes.Status201Created)]
@@ -27,14 +28,7 @@ public class StockMovementsController : ControllerBase
             ?? throw new InvalidOperationException());
 
         var result = await _service.RegisterAsync(request, userId, ct);
-
-        if (result.IsFailure)
-        {
-            if (result.IsNotFound) return NotFound(new { error = result.Error });
-            return BadRequest(new { error = result.Error });
-        }
-
-        return StatusCode(StatusCodes.Status201Created, result.Value);
+        return result.ToActionResult(value => StatusCode(StatusCodes.Status201Created, value));
     }
 
     [HttpGet]
@@ -46,7 +40,7 @@ public class StockMovementsController : ControllerBase
         CancellationToken ct = default)
     {
         var result = await _service.GetPagedAsync(page, pageSize, productId, ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpGet("recent")]
@@ -54,6 +48,6 @@ public class StockMovementsController : ControllerBase
     public async Task<IActionResult> GetRecent([FromQuery] int count = 10, CancellationToken ct = default)
     {
         var result = await _service.GetRecentAsync(count, ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 }

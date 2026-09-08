@@ -6,10 +6,6 @@ namespace MiniStock.Infrastructure.Persistence.Configurations;
 
 public class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
-    // GUIDs fijos para poder referenciarlos en seeds y tests sin consultar la DB
-    public static readonly Guid AdminRoleId = new("00000000-0000-0000-0000-000000000001");
-    public static readonly Guid UserRoleId  = new("00000000-0000-0000-0000-000000000002");
-
     public void Configure(EntityTypeBuilder<Role> builder)
     {
         builder.HasKey(r => r.Id);
@@ -17,8 +13,8 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.HasIndex(r => r.Name).IsUnique();
 
         builder.HasData(
-            CreateRole(AdminRoleId, Role.Names.Admin),
-            CreateRole(UserRoleId,  Role.Names.User)
+            CreateRole(Role.WellKnownIds.AdminRoleId, Role.Names.Admin),
+            CreateRole(Role.WellKnownIds.UserRoleId,  Role.Names.User)
         );
     }
 

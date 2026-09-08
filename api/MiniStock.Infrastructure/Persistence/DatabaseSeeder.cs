@@ -5,15 +5,13 @@ namespace MiniStock.Infrastructure.Persistence;
 
 public static class DatabaseSeeder
 {
-    private static readonly Guid AdminRoleId = new("00000000-0000-0000-0000-000000000001");
-
     public static async Task SeedAsync(AppDbContext db)
     {
         var adminUser = await db.Users.FirstOrDefaultAsync(u => u.Email == "admin@ministock.com");
         if (adminUser == null)
         {
             var hash = BCrypt.Net.BCrypt.HashPassword("Admin123!");
-            var newAdmin = User.Create("Admin", "admin@ministock.com", hash, AdminRoleId);
+            var newAdmin = User.Create("Admin", "admin@ministock.com", hash, Role.WellKnownIds.AdminRoleId);
             db.Users.Add(newAdmin);
             await db.SaveChangesAsync();
             adminUser = newAdmin;
