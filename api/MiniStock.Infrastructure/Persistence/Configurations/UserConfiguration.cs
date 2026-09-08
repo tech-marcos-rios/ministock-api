@@ -14,6 +14,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.Email).IsUnique();
         builder.Property(u => u.PasswordHash).IsRequired();
         builder.Property(u => u.RefreshToken).HasMaxLength(500);
+        // Sin esto, cada POST /auth/refresh escaneaba toda la tabla Users buscando el token.
+        builder.HasIndex(u => u.RefreshToken);
         builder.HasOne(u => u.Role).WithMany().HasForeignKey(u => u.RoleId).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -10,14 +10,16 @@ public class UserRepository : IUserRepository
 
     public UserRepository(AppDbContext context) => _context = context;
 
+    // AsNoTracking: AuthService llama explícitamente a Update(user) después de mutar
+    // (SetRefreshToken/RevokeRefreshToken), no depende del change tracker.
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct) =>
-        _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id, ct);
+        _context.Users.AsNoTracking().Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id, ct);
 
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct) =>
-        _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Email == email, ct);
+        _context.Users.AsNoTracking().Include(u => u.Role).FirstOrDefaultAsync(u => u.Email == email, ct);
 
     public Task<User?> GetByRefreshTokenAsync(string refreshToken, CancellationToken ct) =>
-        _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.RefreshToken == refreshToken, ct);
+        _context.Users.AsNoTracking().Include(u => u.Role).FirstOrDefaultAsync(u => u.RefreshToken == refreshToken, ct);
 
     public Task<bool> ExistsByEmailAsync(string email, CancellationToken ct) =>
         _context.Users.AnyAsync(u => u.Email == email, ct);

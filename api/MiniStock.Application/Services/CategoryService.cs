@@ -8,13 +8,11 @@ namespace MiniStock.Application.Services;
 public class CategoryService : ICategoryService
 {
     private readonly ICategoryRepository _categories;
-    private readonly IProductRepository _products;
     private readonly IUnitOfWork _uow;
 
-    public CategoryService(ICategoryRepository categories, IProductRepository products, IUnitOfWork uow)
+    public CategoryService(ICategoryRepository categories, IUnitOfWork uow)
     {
         _categories = categories;
-        _products = products;
         _uow = uow;
     }
 
@@ -37,7 +35,8 @@ public class CategoryService : ICategoryService
         if (pageSize is < 1 or > 100) pageSize = 20;
 
         var paged = await _categories.GetPagedAsync(page, pageSize, search, ct);
-        var items = paged.Items.Select(c => MapToResponse(c, c.Products.Count)).ToList();
+        var counts = await _categories.GetActiveProductCountsAsync(paged.Items.Select(c => c.Id), ct);
+        var items = paged.Items.Select(c => MapToResponse(c, counts.GetValueOrDefault(c.Id))).ToList();
 
         return Result.Success(new PagedResult<CategoryResponse>(items, paged.TotalCount, paged.Page, paged.PageSize));
     }
@@ -45,8 +44,9 @@ public class CategoryService : ICategoryService
     public async Task<Result<IReadOnlyList<CategoryResponse>>> GetAllActiveAsync(CancellationToken ct = default)
     {
         var list = await _categories.GetAllActiveAsync(ct);
+        var counts = await _categories.GetActiveProductCountsAsync(list.Select(c => c.Id), ct);
         return Result.Success<IReadOnlyList<CategoryResponse>>(
-            list.Select(c => MapToResponse(c, c.Products.Count)).ToList());
+            list.Select(c => MapToResponse(c, counts.GetValueOrDefault(c.Id))).ToList());
     }
 
     public async Task<Result<CategoryResponse>> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -55,7 +55,8 @@ public class CategoryService : ICategoryService
         if (category is null)
             return Result.Failure<CategoryResponse>("Categoría no encontrada.", ErrorType.NotFound);
 
-        return Result.Success(MapToResponse(category, category.Products.Count));
+        var count = await _categories.GetActiveProductCountAsync(id, ct);
+        return Result.Success(MapToResponse(category, count));
     }
 
     public async Task<Result<CategoryResponse>> UpdateAsync(Guid id, UpdateCategoryRequest request, CancellationToken ct = default)
@@ -72,7 +73,8 @@ public class CategoryService : ICategoryService
         _categories.Update(category);
         await _uow.SaveChangesAsync(ct);
 
-        return Result.Success(MapToResponse(category, category.Products.Count));
+        var count = await _categories.GetActiveProductCountAsync(id, ct);
+        return Result.Success(MapToResponse(category, count));
     }
 
     public async Task<Result> DeactivateAsync(Guid id, CancellationToken ct = default)
@@ -80,6 +82,13 @@ public class CategoryService : ICategoryService
         var category = await _categories.GetByIdAsync(id, ct);
         if (category is null)
             return Result.Failure("Categoría no encontrada.", ErrorType.NotFound);
+
+        // Antes esto solo lo bloqueaba el frontend (botón deshabilitado); una llamada
+        // directa a la API podía dejar productos activos apuntando a una categoría inactiva.
+        var activeProducts = await _categories.GetActiveProductCountAsync(id, ct);
+        if (activeProducts > 0)
+            return Result.Failure(
+                "No se puede dar de baja una categoría con productos activos.", ErrorType.Conflict);
 
         category.Deactivate();
         _categories.Update(category);

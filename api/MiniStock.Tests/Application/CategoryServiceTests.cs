@@ -11,13 +11,12 @@ namespace MiniStock.Tests.Application;
 public class CategoryServiceTests
 {
     private readonly Mock<ICategoryRepository> _categories = new();
-    private readonly Mock<IProductRepository>  _products   = new();
     private readonly Mock<IUnitOfWork>         _uow        = new();
     private readonly CategoryService           _sut;
 
     public CategoryServiceTests()
     {
-        _sut = new CategoryService(_categories.Object, _products.Object, _uow.Object);
+        _sut = new CategoryService(_categories.Object, _uow.Object);
     }
 
     [Fact]
@@ -77,12 +76,31 @@ public class CategoryServiceTests
     {
         var category = Category.Create("Test");
         _categories.Setup(r => r.GetByIdAsync(category.Id, default)).ReturnsAsync(category);
+        _categories.Setup(r => r.GetActiveProductCountAsync(category.Id, default)).ReturnsAsync(0);
         _uow.Setup(u => u.SaveChangesAsync(default)).ReturnsAsync(1);
 
         var result = await _sut.DeactivateAsync(category.Id);
 
         result.IsSuccess.Should().BeTrue();
         category.IsActive.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Deactivate_CategoryWithActiveProducts_ReturnsFailure()
+    {
+        // Antes esto solo lo bloqueaba el frontend (botón deshabilitado) — el servicio
+        // debe rechazarlo también, para que una llamada directa a la API no deje
+        // productos activos apuntando a una categoría inactiva.
+        var category = Category.Create("Con productos");
+        _categories.Setup(r => r.GetByIdAsync(category.Id, default)).ReturnsAsync(category);
+        _categories.Setup(r => r.GetActiveProductCountAsync(category.Id, default)).ReturnsAsync(3);
+
+        var result = await _sut.DeactivateAsync(category.Id);
+
+        result.IsFailure.Should().BeTrue();
+        result.Type.Should().Be(ErrorType.Conflict);
+        category.IsActive.Should().BeTrue();
+        _uow.Verify(u => u.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
