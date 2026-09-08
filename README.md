@@ -8,8 +8,8 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](https://www.docker.com)
-[![Tests](https://img.shields.io/badge/tests-102%20passed-brightgreen)](api/MiniStock.Tests/)
-[![Coverage](https://img.shields.io/badge/coverage-83.6%25-brightgreen)](api/MiniStock.Tests/)
+[![Tests](https://img.shields.io/badge/tests-119%20passed-brightgreen)](api/MiniStock.Tests/)
+[![Coverage](https://img.shields.io/badge/coverage%20(domain%2Bapp)-85%25-brightgreen)](api/MiniStock.Tests/)
 
 ---
 
@@ -31,7 +31,7 @@ Registrate con tu propio usuario desde la demo para probarlo — el registro es 
 4. [Pipeline CI/CD — `.github/` + `deploy/`](#4-pipeline-cicd--github--deploy)
 5. [Patrones y decisiones de diseño](#5-patrones-y-decisiones-de-diseño)
 6. [Estándares y buenas prácticas](#6-estándares-y-buenas-prácticas)
-7. [Tests](#7-tests)
+7. [Tests y verificación](#7-tests-y-verificación)
 8. [Seguridad](#8-seguridad)
 9. [Setup local](#9-setup-local)
 10. [Endpoints de la API](#10-endpoints-de-la-api)
@@ -40,33 +40,44 @@ Registrate con tu propio usuario desde la demo para probarlo — el registro es 
 
 ## 1. Arquitectura general
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Browser (HTTPS)                                        │
-│  Next.js — Vercel                                       │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  /api/v1/[...path]  ←── Proxy Route Handler      │  │
-│  │  (server-side, Node.js)                          │  │
-│  └──────────────────┬───────────────────────────────┘  │
-└─────────────────────┼───────────────────────────────────┘
-                      │ HTTPS (server-to-server, sin CORS)
-┌─────────────────────▼───────────────────────────────────┐
-│  .NET 8 API — api.ministock.marcosrios.dev (HTTPS)      │
-│  Caddy → Docker Container                               │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │  ASP.NET Core Web API                            │  │
-│  │  Clean Architecture (4 capas)                    │  │
-│  └──────────────────┬───────────────────────────────┘  │
-└─────────────────────┼───────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────┐
-│  PostgreSQL 16 — Docker Container                       │
-└─────────────────────────────────────────────────────────┘
+### Diagrama de componentes
+
+```mermaid
+flowchart TB
+    subgraph Browser["🌐 Browser"]
+        UI["Next.js App Router\n(React Server + Client Components)"]
+    end
+
+    subgraph Vercel["▲ Vercel — Frontend (HTTPS)"]
+        Pages["Páginas: dashboard, productos,\ncategorías, movimientos"]
+        Hooks["Hooks + Tanstack Query\n(useProducts, useCategories...)"]
+        Proxy["Route Handler\n/api/v1/[...path]"]
+        Pages --> Hooks --> Proxy
+    end
+
+    subgraph Hetzner["🖥️ Hetzner VPS"]
+        Caddy["Caddy\nreverse proxy + HTTPS (Let's Encrypt)"]
+        subgraph Docker["🐳 Docker (docker-compose)"]
+            API["MiniStock.Api\nASP.NET Core — Clean Architecture"]
+            DB[("PostgreSQL 16")]
+        end
+        Caddy --> API --> DB
+    end
+
+    subgraph GHA["⚙️ GitHub Actions"]
+        CI["ci.yml\nbuild + 119 tests en cada PR\n(gatea el merge — branch protection)"]
+        CD["deploy.yml\nbuild + SSH deploy en push a main"]
+    end
+
+    UI --> Pages
+    Proxy -- "HTTPS server-to-server\n(sin CORS, sin mixed-content)" --> Caddy
+    CD -- "git fetch + reset --hard\ndocker compose up --build" --> Docker
 ```
 
 **Por qué este diseño:**
 - El proxy Route Handler nació para resolver *mixed-content*: durante la primera etapa, la API vivía sin dominio propio en `IP:5010` (HTTP), y el browser bloquea llamadas HTTPS → HTTP. Hoy la API tiene su propio subdominio con HTTPS vía Caddy, pero el proxy se mantiene porque simplifica el cliente (mismo origen, sin configurar CORS por endpoint) y oculta el origen real del backend.
 - Separar frontend y backend en hosts distintos permite escalarlos independientemente y usar la plataforma óptima para cada uno (Vercel para CDN global, VPS para la API con acceso a BD).
+- El deploy es *pull-based*: GitHub Actions no empuja artefactos, le pide por SSH al server que se traiga el código y se reconstruya. Es más simple que manejar credenciales de registry de imágenes, pero tiene una trampa que ya mordió a este repo — ver el "Por qué" de `git fetch + reset --hard` en la [sección 4](#4-pipeline-cicd--github--deploy).
 
 ---
 
@@ -123,42 +134,51 @@ Contiene las entidades del negocio con sus invariantes encapsuladas.
 
 Contiene los casos de uso de la aplicación. Cada servicio coordina repositorios para resolver un flujo de negocio.
 
-**Servicios:**
+**Servicios (detrás de interfaz — DIP):**
 
-| Servicio | Caso de uso principal |
-|----------|-----------------------|
-| `AuthService` | Register, Login, Refresh, Logout con JWT + refresh tokens |
-| `ProductService` | CRUD completo con validación de SKU único y categoría válida |
-| `CategoryService` | CRUD con validación de nombre único |
-| `StockMovementService` | Registrar movimientos con validación de stock no negativo |
-| `DashboardService` | Agregaciones para los KPIs del dashboard |
+| Servicio | Interfaz | Caso de uso principal |
+|----------|----------|-----------------------|
+| `AuthService` | `IAuthService` | Register, Login, Refresh, Logout con JWT + refresh tokens |
+| `ProductService` | `IProductService` | CRUD completo con validación de SKU único y categoría válida |
+| `CategoryService` | `ICategoryService` | CRUD con validación de nombre único |
+| `StockMovementService` | `IStockMovementService` | Registrar movimientos con validación de stock no negativo |
+| `DashboardService` | `IDashboardService` | Agregaciones para los KPIs del dashboard |
 
-**Patrón Result\<T\>:**
+**Por qué interfaz para cada servicio:** los controllers inyectan `IProductService`, no `ProductService`. Sin la interfaz, la capa Api quedaría acoplada a la implementación concreta (Dependency Inversion Principle roto) y reemplazar/decorar un servicio (por ejemplo con caching o logging vía decorator) exigiría tocar el controller. Con la interfaz, ese cambio es solo una línea en el registro de DI.
 
-Los servicios no lanzan excepciones para errores de negocio. Retornan `Result<T>`:
+**Patrón Result\<T\> + ErrorType:**
+
+Los servicios no lanzan excepciones para errores de negocio. Retornan `Result<T>`, y cada fallo lleva un `ErrorType` explícito:
 
 ```csharp
 // En el servicio
 if (await _products.ExistsBySkuAsync(request.SKU, ct))
-    return Result.Failure<ProductResponse>("Ya existe un producto con ese SKU.");
+    return Result.Failure<ProductResponse>("Ya existe un producto con ese SKU.", ErrorType.Conflict);
 
-// En el controller
-var result = await _service.CreateAsync(request);
-if (result.IsFailure) return Conflict(result.Error);
-return CreatedAtAction(..., result.Value);
+var category = await _categories.GetByIdAsync(request.CategoryId, ct);
+if (category is null)
+    return Result.Failure<ProductResponse>("Categoría no encontrada.", ErrorType.NotFound);
+
+// En el controller — un solo lugar mapea ErrorType a status code (ver ResultExtensions más abajo)
+var result = await _service.CreateAsync(request, ct);
+return result.ToActionResult(value => CreatedAtAction(nameof(GetById), new { id = value.Id }, value));
 ```
 
-**Por qué Result en lugar de excepciones:** Las excepciones están semánticamente reservadas para situaciones inesperadas (bugs, fallos de red). "El SKU ya existe" es un flujo esperado. Con Result, el compilador *fuerza* al caller a verificar si la operación fue exitosa antes de usar el valor — es imposible olvidarse de manejar el error.
+**Por qué Result en lugar de excepciones:** las excepciones están semánticamente reservadas para situaciones inesperadas (bugs, fallos de red). "El SKU ya existe" es un flujo esperado. Con Result, el compilador *fuerza* al caller a verificar si la operación fue exitosa antes de usar el valor — es imposible olvidarse de manejar el error.
 
-**Validadores (FluentValidation):**
+**Por qué `ErrorType` y no un `bool IsNotFound`:** la primera versión de `Result` solo tenía un booleano para distinguir "no encontrado" del resto. Como no todos los `Result.Failure(...)` lo seteaban, un controller (`CategoriesController.Update`) terminó decidiendo el status code parseando el string del error (`result.Error.Contains("no encontrad")`) — funcionaba, pero se rompía en silencio si alguien cambiaba el wording del mensaje. `ErrorType` (`Validation` / `NotFound` / `Conflict` / `Unauthorized`) reemplaza ese booleano y el mapeo a status code vive en un solo lugar (`ResultExtensions.ToActionResult`, capa Api), no repetido/adivinado en cada controller.
 
-Cada request tiene su validador. Se ejecutan antes de llegar al servicio, vía pipeline de ASP.NET Core:
+**Validadores (FluentValidation) — y el bug que motivó documentarlo así:**
+
+Cada request tiene su `AbstractValidator<T>` en `Application/Validators/`, registrado con `AddValidatorsFromAssembly`. Eso *registra* los validators en el contenedor de DI — pero registrarlos no alcanza para que se ejecuten. Durante una revisión de buenas prácticas se encontró que ningún componente los invocaba: la API aceptaba nombre vacío, precio negativo o SKU vacío sin rechazar nada.
+
+El fix es `ValidationFilter` (`Api/Filters/ValidationFilter.cs`), un `IAsyncActionFilter` registrado globalmente que, por cada argumento de la acción, resuelve su `IValidator<T>` (si existe) y corta la ejecución con `400 ValidationProblemDetails` antes de que el controller la reciba:
 
 ```
-Request → FluentValidation → Controller → Service → Repository
+Request → ValidationFilter (resuelve IValidator<T> y corta si falla) → Controller → Service → Repository
 ```
 
-Si la validación falla, la API retorna `400 Bad Request` con los errores detallados por campo, sin que el servicio se ejecute. La regla de validación más compleja es la del movimiento:
+La regla de validación más compleja es la del movimiento de stock:
 
 ```csharp
 // Quantity > 0 para Entry/Exit, != 0 para Adjustment (puede ser negativo)
@@ -166,6 +186,10 @@ RuleFor(x => x.Quantity)
     .GreaterThan(0).When(x => x.Type != MovementType.Adjustment)
     .NotEqual(0).When(x => x.Type == MovementType.Adjustment);
 ```
+
+**Manejo global de excepciones no controladas:**
+
+Errores de negocio (`Result.Failure`) y errores de validación (`ValidationFilter`) cubren los flujos esperados. Para lo inesperado — un bug, una excepción de infraestructura — `GlobalExceptionHandler` (`Api/GlobalExceptionHandler.cs`) implementa `IExceptionHandler` (nativo de .NET 8, registrado con `AddExceptionHandler` + `app.UseExceptionHandler()`) y devuelve un `ProblemDetails` 500. El detalle de la excepción (mensaje + stack trace) solo se incluye en `Development` — en producción el body es genérico para no filtrar información interna.
 
 ---
 
@@ -202,15 +226,14 @@ Cada entidad tiene su `IEntityTypeConfiguration<T>`. Se eligió Fluent API sobre
 
 ### Capa Api (Controllers)
 
-Los controllers son deliberadamente delgados: solo toman el resultado del servicio y lo mapean a una respuesta HTTP apropiada.
+Los controllers son deliberadamente delgados: solo toman el resultado del servicio y lo mapean a una respuesta HTTP apropiada vía `ResultExtensions` — no hay `if (result.IsFailure) return Conflict/NotFound(...)` repetido en cada acción.
 
 ```csharp
 [HttpPost]
-public async Task<IActionResult> Create([FromBody] CreateProductRequest request)
+public async Task<IActionResult> Create([FromBody] CreateProductRequest request, CancellationToken ct)
 {
-    var result = await _service.CreateAsync(request);
-    if (result.IsFailure) return Conflict(result.Error);
-    return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value);
+    var result = await _productService.CreateAsync(request, ct);
+    return result.ToActionResult(value => CreatedAtAction(nameof(GetById), new { id = value.Id }, value));
 }
 ```
 
@@ -219,6 +242,23 @@ public async Task<IActionResult> Create([FromBody] CreateProductRequest request)
 ```csharp
 // En StockMovementsController — el usuario no puede falsificar su propio ID
 var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+```
+
+### Flujo completo de un request
+
+```mermaid
+flowchart LR
+    Req(["HTTP Request"]) --> VF["ValidationFilter\n(IAsyncActionFilter)"]
+    VF -- "inválido" --> R400["400\nValidationProblemDetails"]
+    VF -- "válido" --> Ctrl["Controller\n(inyecta I*Service)"]
+    Ctrl --> Svc["Service\n(Application)"]
+    Svc --> Repo["Repository\n(Infrastructure / EF Core)"]
+    Repo --> DB[("PostgreSQL")]
+    Svc -- "Result&lt;T&gt; + ErrorType" --> RE["ResultExtensions\n.ToActionResult()"]
+    RE --> ROk["200 / 201 / 204"]
+    RE --> RErr["400 / 401 / 404 / 409\nProblemDetails"]
+    Ctrl -. "excepción no controlada" .-> GEH["GlobalExceptionHandler\n(IExceptionHandler)"]
+    GEH --> R500["500 ProblemDetails\n(sin detalle fuera de Development)"]
 ```
 
 ---
@@ -317,12 +357,15 @@ El archivo `app/api/v1/[...path]/route.ts` intercepta cualquier request que comi
 push a main
     → dotnet build -c Release (validación)
     → SSH al servidor Hetzner
-        → git pull origin main
+        → git fetch origin main
+        → git reset --hard origin/main
         → docker compose up --build -d
         → docker image prune -f
 ```
 
 **Por qué `--build` en cada deploy:** garantiza que el nuevo código siempre se compile en una imagen fresca. Sin `--build`, Docker reutilizaría la imagen cacheada aunque el código haya cambiado.
+
+**Por qué `git fetch` + `reset --hard` y no `git pull` (incidente real):** el script original hacía `git pull origin main`, que internamente es un `fetch` + `merge`. Dos veces (2026-09-04 y 2026-09-08) el checkout de `/opt/ministock` en el server divergió del historial remoto — probablemente por una interrupción a mitad de un deploy anterior — y el `merge` implícito de `pull` no supo cómo reconciliar, tirando `fatal: Need to specify how to reconcile divergent branches` y abortando el deploy sin tocar el código corriendo (falla segura, pero deploy roto). Un script de deploy *pull-based* no debería depender de que el checkout local sea "mergeable": `fetch` + `reset --hard origin/main` fuerza al server a igualar exactamente el remoto sin importar qué haya en el checkout local. Se resolvió como `hotfix/*` — ver [Git Flow](#git-flow) — y el siguiente deploy corrió verde.
 
 **Secrets de GitHub Actions:**
 - `HETZNER_SSH_KEY`: clave privada RSA. Nunca hardcodeada — vive en GitHub Secrets y solo existe en el agente de CI durante el job.
@@ -372,18 +415,31 @@ await DatabaseSeeder.SeedAsync(db);        // Inserta datos demo si la BD está 
 
 ## 5. Patrones y decisiones de diseño
 
-### Result\<T\> — manejo de errores de negocio
+### Result\<T\> + ErrorType — manejo de errores de negocio
 
-**Problema:** las excepciones tienen overhead de stack trace y semánticamente representan situaciones *inesperadas*. "El SKU ya existe" es un flujo esperado.
+**Problema:** las excepciones tienen overhead de stack trace y semánticamente representan situaciones *inesperadas*. "El SKU ya existe" es un flujo esperado. Además, si cada controller decide a mano qué status code corresponde a cada fallo, ese mapeo termina duplicado (y a veces mal — ver más abajo).
 
-**Solución:** `Result<T>` y `Result` retornan el éxito o el error de forma explícita. El compilador fuerza al caller a verificar `IsSuccess` antes de usar `Value`.
+**Solución:** `Result<T>` y `Result` retornan el éxito o el error de forma explícita, con un `ErrorType` (`Validation` / `NotFound` / `Conflict` / `Unauthorized`). El compilador fuerza al caller a verificar `IsSuccess` antes de usar `Value`, y `ResultExtensions.ToActionResult()` (capa Api) es el único lugar que traduce `ErrorType` a status code + `ProblemDetails`:
 
 ```csharp
 // El caller no puede ignorar el error — IsFailure es explícito
-var result = await _productService.CreateAsync(request);
-if (result.IsFailure) return Conflict(result.Error);
-return Created(result.Value);
+var result = await _productService.CreateAsync(request, ct);
+return result.ToActionResult(value => CreatedAtAction(nameof(GetById), new { id = value.Id }, value));
 ```
+
+**Bug real que motivó centralizar el mapeo:** antes de `ErrorType`, `ProductService.CreateAsync` devolvía "categoría no encontrada" sin marcarlo como *not found*, y el controller mapeaba *cualquier* fallo de creación a `409 Conflict`. Resultado: pedir crear un producto con una categoría inexistente devolvía `409` en vez de `404`. Con el mapeo centralizado, clasificar el error correctamente en el servicio (`ErrorType.NotFound`) alcanza para que el status code sea correcto en todos los endpoints, sin tocar los controllers uno por uno.
+
+### Dependency Inversion — interfaces para los servicios de Application
+
+**Problema:** los controllers inyectaban las clases concretas (`ProductService`, no `IProductService`). La capa Api quedaba acoplada a la implementación, no a una abstracción — technically rompía DIP aunque el resto de la capa Application ya dependiera solo de interfaces de repositorio.
+
+**Solución:** cada servicio implementa una interfaz (`IProductService`, `ICategoryService`, etc.) declarada en `Application/Interfaces/`, registrada en DI como `services.AddScoped<IProductService, ProductService>()`. Los controllers y los tests de `ProductServiceTests` (que ya mockeaban `IProductRepository`) no cambian su forma de trabajar — lo que cambia es que ahora hay un punto de extensión real: agregar una implementación decorator (cache, logging) es una línea de DI, no un cambio en cada controller.
+
+### Manejo centralizado de excepciones no controladas
+
+**Problema:** sin nada que capture excepciones no controladas, cualquier bug de infraestructura (una excepción de EF Core, una `NullReferenceException`) llega al cliente como el error genérico de Kestrel — potencialmente con stack trace incluido si `Development` queda mal configurado en producción.
+
+**Solución:** `GlobalExceptionHandler` implementa `IExceptionHandler` (interfaz nativa de ASP.NET Core 8, sin necesidad de un middleware custom), loguea la excepción con Serilog y devuelve un `ProblemDetails` 500 — con el detalle de la excepción solo en `Development`.
 
 ### Repository + Unit of Work
 
@@ -472,7 +528,7 @@ Forzado mediante un hook de Git en `.githooks/commit-msg`. Facilita la generaci�
 ### Validación en dos capas
 
 1. **Frontend**: validación visual básica (campos requeridos, tipos). Feedback inmediato al usuario.
-2. **Backend (FluentValidation)**: validación real que garantiza integridad. No se confía en la validación del cliente.
+2. **Backend (FluentValidation + `ValidationFilter`)**: validación real que garantiza integridad — corre siempre, sin importar qué mandó el cliente. No se confía en la validación del frontend; ver el detalle de por qué esto necesitó un filtro explícito (y no solo registrar los validators) en la [sección 2](#2-proyecto-backend--api).
 
 ### Secretos nunca en el código
 
@@ -510,19 +566,22 @@ policy.WithOrigins(allowedOrigins)  // Solo Vercel, no "*"
 
 ---
 
-## 7. Tests
+## 7. Tests y verificación
 
-El proyecto `api/MiniStock.Tests` contiene **102 tests unitarios** con **83.6 % de cobertura de líneas** (meta: 80 %).
+### Tests automatizados
 
-| Capa | Cobertura |
-|------|-----------|
-| Domain | 100 % |
-| Application | 81 % |
-| Infrastructure (JwtService) | 74.5 % |
+El proyecto `api/MiniStock.Tests` contiene **119 tests unitarios** (xUnit + Moq + FluentAssertions + coverlet). Cobertura de líneas por proyecto, medida con `dotnet test --collect:"XPlat Code Coverage"`:
 
-**Stack de testing:** xUnit + Moq + FluentAssertions + coverlet.
+| Proyecto | Cobertura | Qué se testea |
+|---|---|---|
+| `MiniStock.Domain` | 98 % | Invariantes de las entidades (stock no negativo, soft delete, factory methods) |
+| `MiniStock.Application` | 82 % | Servicios, validadores, `Result` / `ErrorType` |
+| `MiniStock.Infrastructure` | 9 %¹ | `JwtService` (100 %) + el filtro `IsActive` de `ProductRepository.ExistsBySkuAsync` (EF Core InMemory) |
+| `MiniStock.Api` | 23 %¹ | `ValidationFilter`, `ResultExtensions`, `GlobalExceptionHandler` — 100 % los tres |
 
-Los repositorios de EF Core (Infrastructure.Persistence) se excluyen del coverage porque requieren integración contra una BD real — no tiene sentido mockear EF Core ya que eso no probaría nada útil. Lo que se testa unitariamente son los servicios (lógica de negocio), validadores, el patrón Result\<T\> y JwtService.
+¹ Bajo *a propósito* — ver el porqué debajo. **Domain + Application ponderado por líneas: 85 %** (838/986 líneas) — es la lógica de negocio real, y el número que muestra el badge del README.
+
+**Por qué no perseguir 100 % en Infrastructure ni en Api:** los repositorios de EF Core son en su mayoría *queries* delgadas (`_context.Products.Where(...).ToListAsync()`) — mockear `DbSet<T>` no prueba nada que el compilador y un test manual contra Postgres no prueben mejor. La excepción es `ExistsBySkuAsync`: tiene una condición de negocio real (`&& p.IsActive`, ver [sección 8](#8-seguridad)) y sí vale la pena testearla — con **EF Core InMemory** en vez de mockear `DbSet`, para probar el comportamiento real de la query LINQ. Mismo criterio en Api: `ValidationFilter`, `ResultExtensions` y `GlobalExceptionHandler` concentran la lógica que antes vivía repetida en cada controller, y están 100 % testeados; los controllers en sí (ahora un one-liner cada acción) y el bootstrap de `Program.cs` se verifican con smoke testing manual (ver debajo), no con mocks que simularían el propio framework de ASP.NET Core.
 
 **Técnica para navegar propiedades privadas en tests:**
 
@@ -537,7 +596,45 @@ Esto evita agregar setters públicos o constructores solo para tests.
 **Correr los tests:**
 
 ```bash
-dotnet test MiniStock.sln --collect:"XPlat Code Coverage"
+dotnet test api/MiniStock.Tests/MiniStock.Tests.csproj --collect:"XPlat Code Coverage"
+```
+
+### Verificación manual (smoke testing)
+
+Antes de dar por buenos los cambios de la revisión SOLID, se levantó la API contra un Postgres descartable (`docker run postgres:16-alpine`) y se probaron a mano los tres casos que motivaron el fix del `ValidationFilter` y de `ErrorType`:
+
+```bash
+# 1) Validación (antes de ValidationFilter esto devolvía 201 con datos basura)
+$ curl -X POST .../api/v1/products -d '{"name":"","sku":"","price":-5,...}'
+{"title":"Validation error","status":400,"errors":{
+  "Name":["'Name' no debería estar vacío."],
+  "Price":["'Price' debe ser mayor que '0'."], ... }}
+→ HTTP 400 ✅
+
+# 2) categoryId inexistente (antes devolvía 409 Conflict — bug real)
+$ curl -X POST .../api/v1/products -d '{"name":"Producto Test",...,"categoryId":"1111...1111"}'
+{"title":"Resource not found","status":404,"detail":"Categoría no encontrada."}
+→ HTTP 404 ✅ (era 409 antes del fix)
+
+# 3) SKU duplicado (confirma que ErrorType.Conflict sigue mapeando a 409)
+$ curl -X POST .../api/v1/products -d '{"sku":"TEST-999", ...}'  # ya existe
+{"title":"Conflict","status":409,"detail":"Ya existe un producto con el SKU 'TEST-999'."}
+→ HTTP 409 ✅
+```
+
+Del lado del frontend: `npx tsc --noEmit` y `npm run build` limpios (0 warnings), y las 3 páginas refactorizadas (`productos`, `categorias`, `movimientos`) confirmadas sirviendo su contenido real (sin error de render) contra la API real en `localhost`.
+
+### Verificación en producción
+
+Después del primer intento de deploy de este trabajo (que falló — ver el incidente de `git pull` en la [sección 4](#4-pipeline-cicd--github--deploy)) y su hotfix, se confirmó en el ambiente real:
+
+```bash
+$ curl https://api.ministock.marcosrios.dev/health
+→ 200
+
+# Confirma que ValidationFilter también está activo en producción, no solo en dev:
+$ curl -X POST https://api.ministock.marcosrios.dev/api/v1/auth/login -d '{}'
+→ 400
 ```
 
 ---
@@ -548,20 +645,26 @@ Vulnerabilidades identificadas y estado de mitigación:
 
 | Vulnerabilidad | Severidad | Estado |
 |---|---|---|
+| Validators de FluentValidation registrados en DI pero nunca invocados — la API aceptaba cualquier payload sin validar | Alta | ✅ Mitigado (`ValidationFilter`) |
 | Brute force en `/auth/login` y `/auth/register` | Alta | ✅ Mitigado |
 | JWT key sin longitud mínima validada | Media | ✅ Mitigado |
-| Comparación frágil de strings en controllers | Baja | ✅ Mitigado |
+| Comparación frágil de strings en controllers para decidir status code | Baja | ✅ Mitigado (`ErrorType` + `ResultExtensions`) |
+| Sin manejo de excepciones no controladas — riesgo de leak de stack trace en producción | Media | ✅ Mitigado (`GlobalExceptionHandler`) |
 | Sin security headers HTTP en el frontend | Media | ✅ Mitigado |
 | JWT en localStorage (vulnerable a XSS) | Media | ⚠️ Aceptado — documentado en `auth.ts` |
 | Access token válido 60 min post-logout | Media | ⚠️ Trade-off inherente de JWT stateless |
 
 **Mitigaciones implementadas:**
 
+**`ValidationFilter` — la validación ahora se ejecuta de verdad:** registrar un `AbstractValidator<T>` con `AddValidatorsFromAssembly` solo lo pone disponible en el contenedor de DI; nada lo invoca automáticamente. Esa brecha permitía crear productos con nombre vacío, precio negativo o SKU vacío. `ValidationFilter` resuelve y corre el `IValidator<T>` de cada argumento antes de que llegue al controller — ver el detalle completo en la [sección 2](#2-proyecto-backend--api) y la verificación en la [sección 7](#7-tests-y-verificación).
+
 **Rate limiting (.NET 8 built-in):** los endpoints `/auth/login` y `/auth/register` aceptan máximo 10 requests por minuto por IP. Superar el límite retorna `HTTP 429 Too Many Requests`. No requiere dependencia externa — usa `Microsoft.AspNetCore.RateLimiting`.
 
 **Validación de JWT key en startup:** `JwtService` valida que la clave tenga al menos 32 caracteres (256 bits). Si la clave es corta, la app falla al arrancar con un mensaje descriptivo en lugar de generar tokens débiles silenciosamente.
 
-**`Result.IsNotFound` — routing de errores robusto:** los controllers ya no hacen `result.Error.Contains("no encontrad")` para decidir si devolver 404 o 409. Los servicios marcan `notFound: true` al crear fallos de "recurso no encontrado", y los controllers usan `result.IsNotFound`. Cambiar un mensaje de error ya no rompe el routing HTTP silenciosamente.
+**`ErrorType` — routing de errores robusto:** los controllers ya no hacen `result.Error.Contains("no encontrad")` para decidir si devolver 404 o 409. Cada `Result.Failure(...)` lleva un `ErrorType` explícito y `ResultExtensions.ToActionResult()` lo mapea a status code en un solo lugar. Cambiar un mensaje de error ya no rompe el routing HTTP silenciosamente.
+
+**`GlobalExceptionHandler` — sin leak de detalles en producción:** cualquier excepción no controlada se loguea con Serilog y responde `500 ProblemDetails` genérico; el mensaje/stack trace de la excepción solo viaja al cliente cuando `ASPNETCORE_ENVIRONMENT=Development`.
 
 **Security headers en Next.js (`next.config.mjs`):** aplicados en todas las rutas:
 - `X-Frame-Options: DENY` — previene clickjacking
@@ -616,13 +719,15 @@ npm install && npm run dev
 
 Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 
+Los status codes `400`/`404`/`409`/`401` vienen siempre en formato `ProblemDetails` (ver [sección 2](#2-proyecto-backend--api)).
+
 ### Auth `POST /api/v1/auth`
 
 | Método | Ruta        | Body | Respuesta |
 |--------|-------------|------|-----------|
-| POST | `/register` | `{ name, email, password }` | `201` AuthResponse \| `429` |
-| POST | `/login`    | `{ email, password }` | `200` AuthResponse \| `429` |
-| POST | `/refresh`  | `{ refreshToken }` | `200` AuthResponse |
+| POST | `/register` | `{ name, email, password }` | `201` AuthResponse \| `400` \| `409` \| `429` |
+| POST | `/login`    | `{ email, password }` | `200` AuthResponse \| `400` \| `401` \| `429` |
+| POST | `/refresh`  | `{ refreshToken }` | `200` AuthResponse \| `400` \| `401` |
 | POST | `/logout`   | — | `204` |
 
 ### Products `/api/v1/products`
@@ -631,8 +736,8 @@ Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 |--------|---------|-------------|-----------|
 | GET    | `/`     | `?page&pageSize&search&categoryId` | `200` PagedResult |
 | GET    | `/{id}` | — | `200` ProductResponse \| `404` |
-| POST   | `/`     | CreateProductRequest | `201` \| `400` \| `409` |
-| PUT    | `/{id}` | UpdateProductRequest | `200` \| `404` \| `409` |
+| POST   | `/`     | CreateProductRequest | `201` \| `400` \| `404` (categoría inexistente) \| `409` (SKU duplicado) |
+| PUT    | `/{id}` | UpdateProductRequest | `200` \| `400` \| `404` (producto o categoría inexistente) |
 | DELETE | `/{id}` | — | `204` \| `404` |
 
 ### Categories `/api/v1/categories`
@@ -642,15 +747,15 @@ Todos requieren `Authorization: Bearer <token>` excepto `/auth/*`.
 | GET    | `/`     | `200` PagedResult |
 | GET    | `/all`  | `200` List (para dropdowns, sin paginación) |
 | GET    | `/{id}` | `200` \| `404` |
-| POST   | `/`     | `201` \| `409` |
-| PUT    | `/{id}` | `200` \| `404` \| `409` |
+| POST   | `/`     | `201` \| `400` \| `409` (nombre duplicado) |
+| PUT    | `/{id}` | `200` \| `400` \| `404` \| `409` (nombre duplicado) |
 | DELETE | `/{id}` | `204` \| `404` |
 
 ### Stock Movements `/api/v1/stock-movements`
 
 | Método | Ruta | Respuesta |
 |--------|------|-----------|
-| POST   | `/`  | `201` StockMovementResponse \| `400` \| `404` |
+| POST   | `/`  | `201` StockMovementResponse \| `400` (validación, producto inactivo o stock insuficiente) \| `404` (producto inexistente) |
 | GET    | `/`  | `200` PagedResult — `?page&pageSize&productId` |
 
 ### Dashboard `/api/v1/dashboard`
