@@ -1,6 +1,9 @@
 # Configuración inicial del servidor Hetzner
 
-Ejecutar una sola vez al preparar el servidor. **Ya ejecutado el 2026-09-02** en `portfolio-hel1-1` (`2.29.23.254`) — este documento queda como referencia/histórico.
+Ejecutar una sola vez al preparar el servidor. **Ya ejecutado** — este documento queda
+como referencia/histórico. Los valores reales del servidor (IP, hostname, usuarios) viven
+únicamente en GitHub Secrets y en la documentación privada de infraestructura, no en este
+repo público.
 
 ## 1. Instalar dependencias (Ubuntu 26.04)
 
@@ -13,7 +16,8 @@ curl -fsSL https://get.docker.com | sh
 usermod -aG docker deploy
 ```
 
-Server hardening (usuario no-root `deploy`, `ufw`, `fail2ban`, swap) — ver `docs/INFRAESTRUCTURA.md` en la raíz de `D:\Code\projects` para el detalle completo del proceso.
+Server hardening (usuario de deploy sin privilegios root, `ufw`, `fail2ban`, swap) — ver la
+documentación privada de infraestructura para el detalle completo del proceso.
 
 ## 2. Clonar el repositorio
 
@@ -33,7 +37,8 @@ EOF
 chmod 600 /opt/ministock/deploy/.env
 ```
 
-**Nota:** `CORS_ORIGINS` quedó en `http://localhost:3000` como placeholder hasta que el frontend de MiniStock tenga URL de Vercel definitiva — actualizar ese valor en el server (`/opt/ministock/deploy/.env`) antes de ir a producción real.
+**Nota:** `CORS_ORIGINS` debe apuntar a la URL real de Vercel del frontend antes de ir a
+producción — no dejarlo en un valor de desarrollo.
 
 ## 4. Primer deploy
 
@@ -53,10 +58,12 @@ curl http://localhost:5010/health
 
 Ir a: Settings → Secrets → Actions → New repository secret
 
-| Secret | Valor |
-|--------|-------|
-| `HETZNER_HOST` | `2.29.23.254` |
-| `HETZNER_USER` | `deploy` |
-| `HETZNER_SSH_KEY` | Clave privada SSH dedicada (`p_portfolio_hetzner`, sin passphrase) |
+| Secret | Qué va acá |
+|--------|------------|
+| `HETZNER_HOST` | IP o hostname del servidor (valor real solo en el secret, no documentado acá) |
+| `HETZNER_USER` | Usuario de deploy sin privilegios root |
+| `HETZNER_SSH_KEY` | Clave privada SSH dedicada para este deploy, sin passphrase |
 
-La clave pública correspondiente (`p-portfolio-root`) ya está en `/home/deploy/.ssh/authorized_keys` en el servidor. **Root ya no acepta login por SSH** en este server — solo el usuario `deploy`.
+La clave pública correspondiente ya está en `~/.ssh/authorized_keys` del usuario de deploy
+en el servidor. El login por SSH como `root` está deshabilitado — solo se acepta el usuario
+de deploy, y solo por clave (sin autenticación por password).
