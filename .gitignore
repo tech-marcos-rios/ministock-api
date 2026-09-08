@@ -7,6 +7,10 @@
 .env
 deploy/.env
 
+# Local documentation and operational notes (not versioned) — screenshots del
+# README (docs/screenshots/) sí se versionan, solo se ignoran los .md sueltos
+docs/*.md
+
 # Local secrets (never commit)
 appsettings.Development.json
 appsettings.Local.json
