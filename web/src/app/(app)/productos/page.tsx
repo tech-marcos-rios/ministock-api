@@ -17,6 +17,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
+import { QueryError } from "@/components/ui/QueryError";
 
 // ── Tipos internos del formulario ──────────────────────────────────────────
 interface ProductFormData {
@@ -68,7 +69,7 @@ export default function ProductosPage() {
 
   useEffect(() => setPage(1), [debouncedSearch]);
 
-  const { data, isLoading } = useProducts(page, 15, debouncedSearch || undefined);
+  const { data, isLoading, isError, error, refetch } = useProducts(page, 15, debouncedSearch || undefined);
   const { data: categories } = useCategoriesAll();
   const createMutation = useCreateProduct();
   const updateMutation = useUpdateProduct();
@@ -167,6 +168,8 @@ export default function ProductosPage() {
           <div className="flex justify-center items-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
+        ) : isError ? (
+          <QueryError error={error} onRetry={() => refetch()} />
         ) : (
           <table className="w-full text-sm">
             <thead>
