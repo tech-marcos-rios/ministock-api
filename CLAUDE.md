@@ -26,10 +26,28 @@ CI/CD: GitHub Actions (push → build → deploy). Estado: completo y deployado.
 
 ## Pendientes
 
+- ⚠️ **Antes de mergear `hardening/rbac-and-query-perf` a `main`**: la migración `AddCategoryNameUniqueIndexAndUserRefreshTokenIndex` agrega un índice único a `Categories.Name`. Si la base de producción ya tiene dos categorías con el mismo nombre (posible: el registro es libre desde antes de este fix), la migración falla al aplicarse en el startup (`db.Database.MigrateAsync()`) y el contenedor no levanta. Correr antes en producción: `SELECT "Name", COUNT(*) FROM "Categories" GROUP BY "Name" HAVING COUNT(*) > 1;` — si devuelve filas, renombrar/consolidar a mano antes del deploy.
 - Grabar video Loom de 90s con la demo (dashboard + CRUD de productos) y subirlo.
-- Bump de Next.js 14→16 en `web/` — requiere `npm audit fix --force` (breaking cambios), dejado afuera a propósito de la auditoría de seguridad para no mezclarlo con fixes de seguridad. Hacerlo como migración aparte, con testing dedicado.
+- Bump de Next.js 14→16 en `web/` — requiere `npm audit fix --force` (breaking cambios), dejado afuera a propósito de la auditoría de seguridad para no mezclarlo con fixes de seguridad. Hacerlo como migración aparte, con testing dedicado. Confirmado 2026-09-08 que sigue habiendo ~20 advisories abiertos en Next 14.2.35 + 2 altos en postcss (`npm audit`).
 - Actualizar `CORS_ORIGINS` en el `.env` del server si todavía apunta a `http://localhost:3000` en vez de la URL real de Vercel/dominio propio.
 - Tests de integración con `WebApplicationFactory<Program>` (ver sección "Tests" más abajo) — hoy solo hay tests unitarios (services con mocks, algunos con EF Core InMemory). No hay ningún test que levante la API completa end-to-end.
+- CSP del frontend con `'unsafe-inline'` + `'unsafe-eval'` en `script-src` (`next.config.mjs`) — aceptado por ahora (ver `### Seguridad y performance` abajo). Arreglarlo bien requiere CSP con nonces, que a su vez requiere `middleware.ts` server-side — mismo trade-off ya documentado para el auth guard client-side.
+- `DashboardService.GetSummaryAsync` sigue haciendo 4 round-trips separados a la DB (3 de ellos sobre `Products` con el mismo filtro `IsActive`) — se podrían combinar en 1-2 queries. Prioridad baja, no se tocó en el pase 2026-09-08 para no inflar el diff.
+- Sin índice en `StockMovements.CreatedAt` (usado en el `ORDER BY` de todo listado de movimientos) — irrelevante a la escala actual, revisar si la tabla crece mucho.
+
+### Seguridad y performance de queries (revisión 2026-09-08, resuelta en `hardening/rbac-and-query-perf`)
+
+Seguridad:
+- [x] **Broken Access Control** — el rol `Admin` existía en el dominio pero no se usaba en ningún lado; cualquier usuario autenticado (registro libre, sin aprobación) podía borrar/desactivar productos y categorías del demo público. Ahora `DELETE /products/{id}` y `DELETE /categories/{id}` requieren `[Authorize(Roles = RoleNames.Admin)]`.
+- [x] **`Category.Name` sin índice único en DB** — la única protección contra duplicados era el chequeo `ExistsByNameAsync` en el servicio (race condition entre el chequeo y el `SaveChanges`). Se agregó `HasIndex(c => c.Name).IsUnique()` + migración. De paso, `ExistsByNameAsync` pasó a case-insensitive (`ILike` sin wildcards) para ser consistente con el chequeo de rename en `UpdateAsync`, que ya era case-insensitive.
+- [x] **`Category.DeactivateAsync` no chequeaba productos activos server-side** — el frontend deshabilitaba el botón de baja si `productCount > 0`, pero la API igual la permitía si se llamaba directo. Ahora el servicio la rechaza con `409 Conflict`.
+- [x] **`/auth/refresh` sin rate limiting** — `register` y `login` tenían `[EnableRateLimiting("auth")]`, `refresh` no. Emparejado.
+- Next.js 14 (~20 CVEs) y CSP con `unsafe-inline`/`unsafe-eval` — confirmados, quedan en Pendientes arriba (fuera de alcance de este pase).
+
+Performance (EF Core):
+- [x] **`CategoryRepository` cargaba toda la colección de `Products` solo para contar** (`.Include(c => c.Products)` en `GetByIdAsync`/`GetAllActiveAsync`/`GetPagedAsync`, usado únicamente para `category.Products.Count`). Reemplazado por `GetActiveProductCountAsync`/`GetActiveProductCountsAsync`, que proyectan el conteo en SQL sin traer las filas de producto — mismo patrón que ya usaba `DashboardRepository.GetStockByCategoryAsync`. De paso corrige que el conteo mostrado incluía productos inactivos (contradecía el tooltip "Tiene productos activos" del frontend).
+- [x] **Ningún query de solo lectura usaba `.AsNoTracking()`** — agregado en `ProductRepository`, `CategoryRepository`, `StockMovementRepository` y `UserRepository`. Seguro en este código porque los paths de escritura llaman explícitamente a `Update(entity)`, que adjunta y marca modificado sin depender del change tracker.
+- [x] **`Users.RefreshToken` sin índice** — cada `/auth/refresh` escaneaba toda la tabla `Users`. Agregado con la misma migración del índice de `Categories.Name`.
 
 ### Mejoras de buenas prácticas y SOLID (revisión 2026-09-07, resuelta en `refactor/solid-cleanup`)
 

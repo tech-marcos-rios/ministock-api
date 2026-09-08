@@ -8,7 +8,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](https://www.docker.com)
-[![Tests](https://img.shields.io/badge/tests-119%20passed-brightgreen)](api/MiniStock.Tests/)
+[![Tests](https://img.shields.io/badge/tests-122%20passed-brightgreen)](api/MiniStock.Tests/)
 [![Coverage](https://img.shields.io/badge/coverage%20(domain%2Bapp)-85%25-brightgreen)](api/MiniStock.Tests/)
 
 ---
@@ -19,7 +19,7 @@
 |:---------:|:---------:|:-----------:|
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Productos](docs/screenshots/productos.png) | ![Movimientos](docs/screenshots/movimientos.png) |
 
-Registrate con tu propio usuario desde la demo para probarlo — el registro es libre y no requiere aprobación.
+Registrate con tu propio usuario desde la demo para probarlo — el registro es libre y no requiere aprobación. Una cuenta nueva puede crear, editar y ver todo (productos, categorías, movimientos de stock); borrar productos/categorías queda reservado al rol `Admin` (ver [sección 8](#8-seguridad)).
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TB
     end
 
     subgraph GHA["⚙️ GitHub Actions"]
-        CI["ci.yml\nbuild + 119 tests en cada PR\n(gatea el merge — branch protection)"]
+        CI["ci.yml\nbuild + 122 tests en cada PR\n(gatea el merge — branch protection)"]
         CD["deploy.yml\nbuild + SSH deploy en push a main"]
     end
 
@@ -215,6 +215,11 @@ Cada entidad tiene su `IEntityTypeConfiguration<T>`. Se eligió Fluent API sobre
 | `ProductRepository` | Búsqueda con `ILike` (case-insensitive, específico de PostgreSQL/Npgsql) |
 | `StockMovementRepository` | Siempre ordenado por `CreatedAt desc` — historial cronológico inverso |
 | `DashboardRepository` | Consultas de agregación (`COUNT`, `SUM`) directas en SQL vía LINQ |
+| `CategoryRepository` | El conteo de productos por categoría se proyecta en SQL (`GetActiveProductCountAsync`/`...CountsAsync`), no se cargan las entidades — ver el porqué abajo |
+
+**Performance: `AsNoTracking()` en todos los queries de solo lectura.** Ningún repositorio lo usaba — cada `GetPagedAsync`/`GetAllActiveAsync`/`GetRecentAsync`/`GetByIdAsync` trackeaba las entidades sin necesidad. Es seguro acá porque los paths que sí mutan llaman explícitamente a `Update(entity)` (ver el patrón en cada método `Update`), que adjunta y marca modificado sin depender del change tracker — no hay ningún código que dependa de que una entidad leída venga trackeada.
+
+**Bug real que motivó dejar de hacer `.Include(c => c.Products)` en `CategoryRepository`:** `GetByIdAsync`, `GetAllActiveAsync` y `GetPagedAsync` cargaban la colección completa de productos de cada categoría — todas las columnas, de cada fila — únicamente para que la capa de mapeo hiciera `category.Products.Count`. Peor: ese conteo no filtraba por `IsActive`, así que un producto dado de baja seguía contando, contradiciendo el propio tooltip del frontend ("Tiene productos activos") que asume que el conteo es de productos *activos*. `GetActiveProductCountAsync`/`GetActiveProductCountsAsync` proyectan el conteo directo en SQL (mismo patrón que ya usaba `DashboardRepository.GetStockByCategoryAsync`) — cero filas de producto cargadas, y el número ahora es el correcto.
 
 **JwtService:**
 
@@ -570,18 +575,18 @@ policy.WithOrigins(allowedOrigins)  // Solo Vercel, no "*"
 
 ### Tests automatizados
 
-El proyecto `api/MiniStock.Tests` contiene **119 tests unitarios** (xUnit + Moq + FluentAssertions + coverlet). Cobertura de líneas por proyecto, medida con `dotnet test --collect:"XPlat Code Coverage"`:
+El proyecto `api/MiniStock.Tests` contiene **122 tests unitarios** (xUnit + Moq + FluentAssertions + coverlet). Cobertura de líneas por proyecto, medida con `dotnet test --collect:"XPlat Code Coverage"`:
 
 | Proyecto | Cobertura | Qué se testea |
 |---|---|---|
-| `MiniStock.Domain` | 98 % | Invariantes de las entidades (stock no negativo, soft delete, factory methods) |
+| `MiniStock.Domain` | 97 % | Invariantes de las entidades (stock no negativo, soft delete, factory methods) |
 | `MiniStock.Application` | 82 % | Servicios, validadores, `Result` / `ErrorType` |
-| `MiniStock.Infrastructure` | 9 %¹ | `JwtService` (100 %) + el filtro `IsActive` de `ProductRepository.ExistsBySkuAsync` (EF Core InMemory) |
+| `MiniStock.Infrastructure` | 8 %¹ | `JwtService` (100 %) + `ProductRepository.ExistsBySkuAsync` y `CategoryRepository.GetActiveProductCount(s)Async` (EF Core InMemory) |
 | `MiniStock.Api` | 23 %¹ | `ValidationFilter`, `ResultExtensions`, `GlobalExceptionHandler` — 100 % los tres |
 
-¹ Bajo *a propósito* — ver el porqué debajo. **Domain + Application ponderado por líneas: 85 %** (838/986 líneas) — es la lógica de negocio real, y el número que muestra el badge del README.
+¹ Bajo *a propósito* — ver el porqué debajo. **Domain + Application ponderado por líneas: 85 %** (846/1000 líneas) — es la lógica de negocio real, y el número que muestra el badge del README.
 
-**Por qué no perseguir 100 % en Infrastructure ni en Api:** los repositorios de EF Core son en su mayoría *queries* delgadas (`_context.Products.Where(...).ToListAsync()`) — mockear `DbSet<T>` no prueba nada que el compilador y un test manual contra Postgres no prueben mejor. La excepción es `ExistsBySkuAsync`: tiene una condición de negocio real (`&& p.IsActive`, ver [sección 8](#8-seguridad)) y sí vale la pena testearla — con **EF Core InMemory** en vez de mockear `DbSet`, para probar el comportamiento real de la query LINQ. Mismo criterio en Api: `ValidationFilter`, `ResultExtensions` y `GlobalExceptionHandler` concentran la lógica que antes vivía repetida en cada controller, y están 100 % testeados; los controllers en sí (ahora un one-liner cada acción) y el bootstrap de `Program.cs` se verifican con smoke testing manual (ver debajo), no con mocks que simularían el propio framework de ASP.NET Core.
+**Por qué no perseguir 100 % en Infrastructure ni en Api:** los repositorios de EF Core son en su mayoría *queries* delgadas (`_context.Products.Where(...).ToListAsync()`) — mockear `DbSet<T>` no prueba nada que el compilador y un test manual contra Postgres no prueben mejor. La excepción son los métodos con una condición de negocio real: `ExistsBySkuAsync` (`&& p.IsActive`) y `CategoryRepository.GetActiveProductCount(s)Async` (filtran por `IsActive` y agrupan) — esos sí valen la pena testear con **EF Core InMemory** en vez de mockear `DbSet`, para probar el comportamiento real de la query LINQ. Límite real de esa técnica: `CategoryRepository.ExistsByNameAsync` usa `EF.Functions.ILike`, una función específica de Npgsql que el proveedor InMemory no sabe traducir (`'ILike' method is not supported`) — ese método específico se quedó sin test automatizado y se verificó a mano (ver debajo). Mismo criterio en Api: `ValidationFilter`, `ResultExtensions` y `GlobalExceptionHandler` concentran la lógica que antes vivía repetida en cada controller, y están 100 % testeados; los controllers en sí (ahora un one-liner cada acción) y el bootstrap de `Program.cs` se verifican con smoke testing manual (ver debajo), no con mocks que simularían el propio framework de ASP.NET Core.
 
 **Técnica para navegar propiedades privadas en tests:**
 
@@ -624,6 +629,29 @@ $ curl -X POST .../api/v1/products -d '{"sku":"TEST-999", ...}'  # ya existe
 
 Del lado del frontend: `npx tsc --noEmit` y `npm run build` limpios (0 warnings), y las 3 páginas refactorizadas (`productos`, `categorias`, `movimientos`) confirmadas sirviendo su contenido real (sin error de render) contra la API real en `localhost`.
 
+Mismo proceso para el pase de seguridad + performance de queries: Postgres descartable, migración aplicada desde cero (confirma que `AddCategoryNameUniqueIndexAndUserRefreshTokenIndex` corre limpia contra los datos seedeados), y los cuatro casos que motivaron los fixes:
+
+```bash
+# 1) DELETE de producto con un usuario recién registrado (rol User) — antes esto daba 204
+$ curl -X DELETE .../api/v1/products/{id} -H "Authorization: Bearer <token de User>"
+→ HTTP 403 ✅
+
+# 2) Mismo DELETE con el usuario admin seedeado (rol Admin)
+$ curl -X DELETE .../api/v1/products/{id} -H "Authorization: Bearer <token de Admin>"
+→ HTTP 204 ✅
+
+# 3) Categoría duplicada con distinto case (antes ExistsByNameAsync era case-sensitive)
+$ curl -X POST .../api/v1/categories -d '{"name":"Oficina2"}'   → 201
+$ curl -X POST .../api/v1/categories -d '{"name":"OFICINA2"}'   → 409 ✅ Conflict
+
+# 4) Dar de baja una categoría con productos activos (antes solo lo bloqueaba el frontend)
+$ curl -X DELETE .../api/v1/categories/{id-con-productos-activos} -H "Authorization: Bearer <Admin>"
+{"title":"Conflict","status":409,"detail":"No se puede dar de baja una categoría con productos activos."}
+→ HTTP 409 ✅
+```
+
+De paso, el rate limit compartido de `/auth/*` (10/min por IP) se confirmó funcionando *entre* endpoints: después de varios `login`/`register` de las pruebas de arriba, los intentos siguientes a `/auth/refresh` ya venían devolviendo `429` — señal de que el bucket es realmente compartido y no por endpoint.
+
 ### Verificación en producción
 
 Después del primer intento de deploy de este trabajo (que falló — ver el incidente de `git pull` en la [sección 4](#4-pipeline-cicd--github--deploy)) y su hotfix, se confirmó en el ambiente real:
@@ -645,12 +673,17 @@ Vulnerabilidades identificadas y estado de mitigación:
 
 | Vulnerabilidad | Severidad | Estado |
 |---|---|---|
+| Broken Access Control — el rol Admin existía pero no se usaba en ningún lado; cualquier usuario autenticado podía borrar productos/categorías del demo público | Alta | ✅ Mitigado (`[Authorize(Roles = ...)]` en los `DELETE`) |
 | Validators de FluentValidation registrados en DI pero nunca invocados — la API aceptaba cualquier payload sin validar | Alta | ✅ Mitigado (`ValidationFilter`) |
-| Brute force en `/auth/login` y `/auth/register` | Alta | ✅ Mitigado |
+| Brute force en `/auth/login`, `/auth/register` y `/auth/refresh` | Alta | ✅ Mitigado |
+| `Category.Name` sin índice único — dos requests concurrentes podían crear duplicados (race condition) | Media | ✅ Mitigado (índice único + `ExistsByNameAsync` case-insensitive) |
+| Dar de baja una categoría con productos activos solo lo bloqueaba el frontend, no la API | Media | ✅ Mitigado |
 | JWT key sin longitud mínima validada | Media | ✅ Mitigado |
 | Comparación frágil de strings en controllers para decidir status code | Baja | ✅ Mitigado (`ErrorType` + `ResultExtensions`) |
 | Sin manejo de excepciones no controladas — riesgo de leak de stack trace en producción | Media | ✅ Mitigado (`GlobalExceptionHandler`) |
 | Sin security headers HTTP en el frontend | Media | ✅ Mitigado |
+| CSP con `'unsafe-inline'` + `'unsafe-eval'` en `script-src` — reduce bastante la protección XSS real del CSP | Media | ⚠️ Aceptado — arreglarlo bien requiere CSP con nonces + `middleware.ts` |
+| Next.js 14.2.35 con ~20 CVEs conocidos (varios medios/altos) + postcss con 2 altos | Media | ⚠️ Bump a Next 16 diferido a propósito (ver Pendientes) |
 | JWT en localStorage (vulnerable a XSS) | Media | ⚠️ Aceptado — documentado en `auth.ts` |
 | Access token válido 60 min post-logout | Media | ⚠️ Trade-off inherente de JWT stateless |
 
@@ -658,7 +691,13 @@ Vulnerabilidades identificadas y estado de mitigación:
 
 **`ValidationFilter` — la validación ahora se ejecuta de verdad:** registrar un `AbstractValidator<T>` con `AddValidatorsFromAssembly` solo lo pone disponible en el contenedor de DI; nada lo invoca automáticamente. Esa brecha permitía crear productos con nombre vacío, precio negativo o SKU vacío. `ValidationFilter` resuelve y corre el `IValidator<T>` de cada argumento antes de que llegue al controller — ver el detalle completo en la [sección 2](#2-proyecto-backend--api) y la verificación en la [sección 7](#7-tests-y-verificación).
 
-**Rate limiting (.NET 8 built-in):** los endpoints `/auth/login` y `/auth/register` aceptan máximo 10 requests por minuto por IP. Superar el límite retorna `HTTP 429 Too Many Requests`. No requiere dependencia externa — usa `Microsoft.AspNetCore.RateLimiting`.
+**RBAC en las bajas (`[Authorize(Roles = ...)]`):** el rol `Admin` existía en el dominio (seedeado, incluido en el JWT como claim) pero ningún endpoint lo exigía — cualquier usuario autenticado podía borrar/desactivar productos y categorías. Como el registro es libre y sin aprobación (es una feature del demo público, no un bug), esto significaba que cualquier visitante podía vaciar el inventario compartido. `DELETE /products/{id}` y `DELETE /categories/{id}` ahora exigen `Admin`; el resto del CRUD (crear, editar, ver, registrar movimientos) sigue abierto a cualquier `User` — decisión deliberada para no romper la posibilidad de probar el demo con una cuenta recién registrada.
+
+**Índice único en `Category.Name` + chequeo case-insensitive:** la única protección contra nombres duplicados era `ExistsByNameAsync` en el servicio — dos requests concurrentes podían pasar ambos el chequeo antes de que cualquiera hiciera `SaveChanges` (race condition). Se agregó `HasIndex(c => c.Name).IsUnique()` a nivel de base, que sí puede arbitrar entre escrituras concurrentes. De paso, `ExistsByNameAsync` pasó de `==` (case-sensitive) a `ILike` sin wildcards (case-insensitive), consistente con el chequeo de rename que ya usaba `OrdinalIgnoreCase`.
+
+**Dar de baja una categoría con productos activos, ahora bloqueado también en la API:** el frontend deshabilitaba el botón cuando `productCount > 0`, pero nada impedía llamar al endpoint directo. `CategoryService.DeactivateAsync` ahora rechaza la baja con `409 Conflict` si la categoría tiene productos activos — la regla de negocio vive donde corresponde (el servicio), no solo en la UI.
+
+**Rate limiting (.NET 8 built-in):** los endpoints `/auth/login`, `/auth/register` y `/auth/refresh` aceptan máximo 10 requests por minuto por IP (bucket compartido entre los tres). Superar el límite retorna `HTTP 429 Too Many Requests`. No requiere dependencia externa — usa `Microsoft.AspNetCore.RateLimiting`.
 
 **Validación de JWT key en startup:** `JwtService` valida que la clave tenga al menos 32 caracteres (256 bits). Si la clave es corta, la app falla al arrancar con un mensaje descriptivo en lugar de generar tokens débiles silenciosamente.
 
@@ -738,7 +777,7 @@ Los status codes `400`/`404`/`409`/`401` vienen siempre en formato `ProblemDetai
 | GET    | `/{id}` | — | `200` ProductResponse \| `404` |
 | POST   | `/`     | CreateProductRequest | `201` \| `400` \| `404` (categoría inexistente) \| `409` (SKU duplicado) |
 | PUT    | `/{id}` | UpdateProductRequest | `200` \| `400` \| `404` (producto o categoría inexistente) |
-| DELETE | `/{id}` | — | `204` \| `404` |
+| DELETE | `/{id}` | — | `204` \| `403` (requiere rol Admin) \| `404` |
 
 ### Categories `/api/v1/categories`
 
@@ -749,7 +788,7 @@ Los status codes `400`/`404`/`409`/`401` vienen siempre en formato `ProblemDetai
 | GET    | `/{id}` | `200` \| `404` |
 | POST   | `/`     | `201` \| `400` \| `409` (nombre duplicado) |
 | PUT    | `/{id}` | `200` \| `400` \| `404` \| `409` (nombre duplicado) |
-| DELETE | `/{id}` | `204` \| `404` |
+| DELETE | `/{id}` | `204` \| `403` (requiere rol Admin) \| `404` \| `409` (tiene productos activos) |
 
 ### Stock Movements `/api/v1/stock-movements`
 
