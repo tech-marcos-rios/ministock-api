@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniStock.Api", "api\MiniSt
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniStock.Tests", "api\MiniStock.Tests\MiniStock.Tests.csproj", "{6D786468-E227-46DF-B4CB-1A0635574037}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniStock.Tests.Integration", "api\MiniStock.Tests.Integration\MiniStock.Tests.Integration.csproj", "{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -85,6 +87,18 @@ Global
 		{6D786468-E227-46DF-B4CB-1A0635574037}.Release|x64.Build.0 = Release|Any CPU
 		{6D786468-E227-46DF-B4CB-1A0635574037}.Release|x86.ActiveCfg = Release|Any CPU
 		{6D786468-E227-46DF-B4CB-1A0635574037}.Release|x86.Build.0 = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|x64.Build.0 = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Debug|x86.Build.0 = Debug|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|x64.ActiveCfg = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|x64.Build.0 = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|x86.ActiveCfg = Release|Any CPU
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -95,5 +109,6 @@ Global
 		{3FB26778-A6DE-45BD-9BF5-A2A51CEC2162} = {D82C56D6-B2CD-F611-9E31-04638F7EC30E}
 		{92F6C8BA-7079-4A51-8C4D-99DD5ACA459D} = {D82C56D6-B2CD-F611-9E31-04638F7EC30E}
 		{6D786468-E227-46DF-B4CB-1A0635574037} = {D82C56D6-B2CD-F611-9E31-04638F7EC30E}
+		{ABFE08F4-5FEC-4FD9-B0B7-D4F0B092B8CE} = {D82C56D6-B2CD-F611-9E31-04638F7EC30E}
 	EndGlobalSection
 EndGlobal

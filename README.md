@@ -8,7 +8,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED)](https://www.docker.com)
-[![Tests](https://img.shields.io/badge/tests-122%20passed-brightgreen)](api/MiniStock.Tests/)
+[![Tests](https://img.shields.io/badge/tests-135%20passed-brightgreen)](api/MiniStock.Tests/)
 [![Coverage](https://img.shields.io/badge/coverage%20(domain%2Bapp)-85%25-brightgreen)](api/MiniStock.Tests/)
 
 ---
@@ -65,7 +65,7 @@ flowchart TB
     end
 
     subgraph GHA["⚙️ GitHub Actions"]
-        CI["ci.yml\nbuild + 122 tests en cada PR\n(gatea el merge — branch protection)"]
+        CI["ci.yml\nbuild + 135 tests en cada PR\n(gatea el merge — branch protection)"]
         CD["deploy.yml\nbuild + SSH deploy en push a main"]
     end
 
@@ -416,6 +416,10 @@ await DatabaseSeeder.SeedAsync(db);        // Inserta datos demo si la BD está 
 
 **Por qué migrar en startup y no en el pipeline:** simplifica el deploy. No hay paso separado de migración que pueda quedar fuera de sincronía con el código. La migración es idempotente (EF Core registra las ya aplicadas en `__EFMigrationsHistory`).
 
+**Si un deploy sale mal:** [`deploy/ROLLBACK.md`](deploy/ROLLBACK.md) — cómo revertir un
+merge a `main`, qué hacer si una migración falla al arrancar, y el estado real de
+backup/restore (spoiler: no implementado todavía, documentado a propósito en vez de omitido).
+
 ---
 
 ## 5. Patrones y decisiones de diseño
@@ -601,8 +605,52 @@ Esto evita agregar setters públicos o constructores solo para tests.
 **Correr los tests:**
 
 ```bash
-dotnet test api/MiniStock.Tests/MiniStock.Tests.csproj --collect:"XPlat Code Coverage"
+# Desde la raíz del repo — MiniStock.sln existe ahí (no dentro de api/, un error que
+# esta misma documentación tuvo durante un tiempo: decía que no había .sln en el repo).
+dotnet test MiniStock.sln --collect:"XPlat Code Coverage"
+
+# Solo unitarios (rápido, sin Docker):
+dotnet test api/MiniStock.Tests/MiniStock.Tests.csproj
+
+# Solo integración (necesita Docker corriendo — ver sección siguiente):
+dotnet test api/MiniStock.Tests.Integration/MiniStock.Tests.Integration.csproj
 ```
+
+### Tests de integración
+
+Los 122 tests de arriba son unitarios — nunca se levantó la app completa vía HTTP. El
+proyecto `api/MiniStock.Tests.Integration` agrega **13 tests** que sí lo hacen: una
+`WebApplicationFactory<Program>` real, contra una **Postgres real en Docker**
+(`Testcontainers.PostgreSql`), no EF Core InMemory — la app usa `EF.Functions.ILike`
+(específico de Npgsql) en varios lados, e InMemory no sabe traducirlo (ver el límite
+descripto arriba); un test de integración que no golpea Postgres de verdad no sería
+representativo.
+
+Cubren los flujos completos, no unidades aisladas: registro → login → refresh (con
+rotación) → logout (`AuthFlowTests`); CRUD de productos incluyendo el 403 de RBAC contra
+un usuario no-Admin real y el 404 de categoría inexistente (`ProductsFlowTests`);
+movimientos de stock con la regla de "nunca stock negativo" (`StockMovementsFlowTests`);
+y el dashboard (`DashboardFlowTests`).
+
+**Bug real que encontró la propia construcción de esta suite:** la primera versión pasaba
+la clave de JWT de test vía `ConfigureAppConfiguration` (agregar un `AddInMemoryCollection`
+al `IWebHostBuilder`). Todos los logins funcionaban, pero cualquier endpoint protegido
+devolvía `401` con un token recién emitido y válido. La causa: `appsettings.Development.json`
+de `MiniStock.Api` viaja al content root del host de test, y su valor placeholder
+(`REPLACE_WITH_SECRET_KEY_MIN_32_CHARS`) le ganaba la carrera al override — el middleware de
+JWT terminaba firmando/validando con esa clave, mientras que `IConfiguration` vía DI (lo que
+usan los servicios de la app en cada request) sí veía el override correcto. Dos "fuentes de
+verdad" de configuración desincronizadas dentro del mismo host de test. El fix fue usar
+`builder.UseSetting(...)` en vez de `ConfigureAppConfiguration` — el mecanismo que
+`WebApplicationFactory` documenta específicamente para este escenario, y que sí gana esa
+carrera (`IntegrationTestFixture.cs`).
+
+Otro hallazgo real, esta vez de la propia app: el rate limiter de `/auth/*` (10/min)
+particiona por IP, y en el `TestServer` en memoria todos los requests comparten la misma IP
+simulada — la suite completa empezó a devolver `429` a mitad de camino porque cada test
+logueaba admin por separado. El fix (cachear el login de Admin una vez por corrida, no una
+vez por test) es además un patrón de test más realista: un cliente real tampoco relogea
+antes de cada request.
 
 ### Verificación manual (smoke testing)
 

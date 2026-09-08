@@ -8,6 +8,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { getErrorMessage } from "@/lib/errors";
 import { Modal } from "@/components/ui/Modal";
 import { Pagination } from "@/components/ui/Pagination";
+import { QueryError } from "@/components/ui/QueryError";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -49,7 +50,7 @@ export default function MovimientosPage() {
   const [form, setForm] = useState<FormData>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const { data, isLoading } = useMovements(page, 20);
+  const { data, isLoading, isError, error, refetch } = useMovements(page, 20);
   const { data: allProducts } = useProducts(1, 100);
   const registerMutation = useRegisterMovement();
 
@@ -102,6 +103,8 @@ export default function MovimientosPage() {
           <div className="flex justify-center items-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
+        ) : isError ? (
+          <QueryError error={error} onRetry={() => refetch()} />
         ) : (
           <table className="w-full text-sm">
             <thead>

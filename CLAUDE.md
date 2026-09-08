@@ -26,14 +26,41 @@ CI/CD: GitHub Actions (push → build → deploy). Estado: completo y deployado.
 
 ## Pendientes
 
-- La migración `AddCategoryNameUniqueIndexAndUserRefreshTokenIndex` (rama `hardening/rbac-and-query-perf`) agrega un índice único a `Categories.Name`. Si la base de producción tuviera dos categorías con el mismo nombre, fallaría al aplicarse en el startup y el contenedor no levantaría. Como la DB de producción es solo datos de demo (nada real todavía), no hace falta reconciliar nada a mano si llegara a chocar: se puede resetear la base sin problema (`docker compose down -v` + `up` en el server, o borrar el volumen `pgdata`). **Ojo**: `DatabaseSeeder` solo corre `if (app.Environment.IsDevelopment())` (`Program.cs`) — en producción (`ASPNETCORE_ENVIRONMENT=Production`) un reset deja la base vacía, sin admin ni datos de demo, no se repuebla sola. Después de resetear en producción hay que re-crear el usuario admin a mano (o correr el seeder manualmente apuntando a esa base) antes de anunciar el demo como disponible de nuevo.
+- [x] Secret `CORS_ORIGINS` creado en GitHub (`tech-marcos-rios/ministock-api`) con `https://ministock.marcosrios.dev` (2026-09-08). `deploy.yml` lo sincroniza al `.env` del server en cada deploy — si el secret no existe, el step aborta antes de tocar el contenedor (no rompe producción en silencio).
+- La migración `AddCategoryNameUniqueIndexAndUserRefreshTokenIndex` agrega un índice único a `Categories.Name`. Si la base de producción tuviera dos categorías con el mismo nombre, fallaría al aplicarse en el startup y el contenedor no levantaría. Como la DB de producción es solo datos de demo (nada real todavía), no hace falta reconciliar nada a mano si llegara a chocar — ver `deploy/ROLLBACK.md` para el procedimiento completo (incluye la advertencia de que `DatabaseSeeder` no corre en producción, así que un reset en producción deja la base sin admin ni datos de demo hasta recrearlos a mano).
 - Grabar video Loom de 90s con la demo (dashboard + CRUD de productos) y subirlo.
 - Bump de Next.js 14→16 en `web/` — requiere `npm audit fix --force` (breaking cambios), dejado afuera a propósito de la auditoría de seguridad para no mezclarlo con fixes de seguridad. Hacerlo como migración aparte, con testing dedicado. Confirmado 2026-09-08 que sigue habiendo ~20 advisories abiertos en Next 14.2.35 + 2 altos en postcss (`npm audit`).
-- Actualizar `CORS_ORIGINS` en el `.env` del server si todavía apunta a `http://localhost:3000` en vez de la URL real de Vercel/dominio propio.
-- Tests de integración con `WebApplicationFactory<Program>` (ver sección "Tests" más abajo) — hoy solo hay tests unitarios (services con mocks, algunos con EF Core InMemory). No hay ningún test que levante la API completa end-to-end.
 - CSP del frontend con `'unsafe-inline'` + `'unsafe-eval'` en `script-src` (`next.config.mjs`) — aceptado por ahora (ver `### Seguridad y performance` abajo). Arreglarlo bien requiere CSP con nonces, que a su vez requiere `middleware.ts` server-side — mismo trade-off ya documentado para el auth guard client-side.
-- `DashboardService.GetSummaryAsync` sigue haciendo 4 round-trips separados a la DB (3 de ellos sobre `Products` con el mismo filtro `IsActive`) — se podrían combinar en 1-2 queries. Prioridad baja, no se tocó en el pase 2026-09-08 para no inflar el diff.
+- `DashboardService.GetSummaryAsync` sigue haciendo 4 round-trips separados a la DB (3 de ellos sobre `Products` con el mismo filtro `IsActive`) — se podrían combinar en 1-2 queries. Prioridad baja, no se tocó para no inflar el diff de los pases de hardening.
 - Sin índice en `StockMovements.CreatedAt` (usado en el `ORDER BY` de todo listado de movimientos) — irrelevante a la escala actual, revisar si la tabla crece mucho.
+- Backup/restore de la base de producción — no implementado (documentado en `deploy/ROLLBACK.md` en vez de omitido). Bajo impacto mientras la DB sea solo datos de demo.
+- Monitoreo/APM más robusto (hoy solo `/health` básico) — requiere dar de alta un servicio externo con credenciales del usuario, no es algo para resolver sin su intervención directa.
+
+### Gaps del diagnóstico 26-09-07 (revisión 2026-09-08)
+
+`docs/26-09-07-Status.md` (no versionado) dejó un checklist P0-P3. Los ítems que eran
+código/documentación accionable:
+
+- [x] **Tests de integración** — nuevo proyecto `api/MiniStock.Tests.Integration`:
+  `WebApplicationFactory<Program>` + `Testcontainers.PostgreSql` (Postgres real, no
+  InMemory — la app usa `EF.Functions.ILike`, específico de Npgsql). 13 tests cubriendo
+  auth completo, CRUD de productos con RBAC real, stock insuficiente, y dashboard. Agregado
+  a `MiniStock.sln`, así que `ci.yml` ya lo corre sin cambios — ver detalle y los dos bugs
+  reales que encontró construir la suite (JWT key + rate limiter compartido) en el README.
+- [x] **Manejo de errores del frontend (loading/empty/retry)** — ninguna página
+  desestructuraba `isError` de sus queries; un `GET` fallido se veía igual que una lista
+  vacía. Nuevo `<QueryError>` (`web/src/components/ui/`) con botón de reintentar, aplicado
+  en las 4 páginas que consumen queries.
+- [x] **Auditoría de logs sensibles** — revisado, sin hallazgos (ver sección Logging más
+  abajo).
+- [x] **`CORS_ORIGINS` manual en el server** — ahora se sincroniza desde un GitHub Secret
+  en cada deploy en vez de un `.env` tocado a mano una sola vez (ver Pendientes arriba, es
+  la única acción que quedó del lado del usuario).
+- [x] **Runbook de rollback/recuperación** — `deploy/ROLLBACK.md`.
+
+Fuera de este pase (necesitan al usuario o son decisiones de arquitectura, no fixes
+chicos): backup/restore real, monitoreo/APM, blocklist de JWT para invalidar el access
+token en logout inmediato (ver Pendientes arriba).
 
 ### Seguridad y performance de queries (revisión 2026-09-08, resuelta en `hardening/rbac-and-query-perf`)
 
@@ -229,6 +256,14 @@ Fuente: [Serilog — sitio oficial](https://serilog.net/)
 - Usar Serilog con sink a consola (y Azure Monitor en producción).
 - Nunca loguear passwords, tokens ni datos sensibles.
 - Nivel mínimo en desarrollo: `Debug`. En producción: `Information`.
+
+**Auditado 2026-09-08** (no solo la norma de arriba — se revisó el código): el único
+`ILogger` explícito de la app es `GlobalExceptionHandler`, que loguea
+`"Unhandled exception on {Method} {Path}"` — sin body, sin headers, sin datos de negocio.
+`UseSerilogRequestLogging()` (built-in de ASP.NET Core) loguea método/path/status
+code/duración por default; no incluye headers ni el body del request, así que passwords y
+tokens enviados en el body de `/auth/login`/`/auth/register` no quedan en el log. Sin
+hallazgos.
 
 ---
 

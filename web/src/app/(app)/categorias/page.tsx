@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
+import { QueryError } from "@/components/ui/QueryError";
 
 interface FormData {
   name: string;
@@ -37,7 +38,7 @@ export default function CategoriasPage() {
 
   useEffect(() => setPage(1), [debouncedSearch]);
 
-  const { data, isLoading } = useCategories(page, 15, debouncedSearch || undefined);
+  const { data, isLoading, isError, error, refetch } = useCategories(page, 15, debouncedSearch || undefined);
   const createMutation = useCreateCategory();
   const updateMutation = useUpdateCategory();
   const deleteMutation = useDeleteCategory();
@@ -120,6 +121,8 @@ export default function CategoriasPage() {
           <div className="flex justify-center items-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
+        ) : isError ? (
+          <QueryError error={error} onRetry={() => refetch()} />
         ) : (
           <table className="w-full text-sm">
             <thead>
