@@ -445,6 +445,30 @@ Forzado mediante un hook de Git en `.githooks/commit-msg`. Facilita la generaci�
 - `ci.yml` corre build + test en cada PR hacia `main` o `develop`; `deploy.yml` sigue disparando el deploy a Hetzner solo en push a `main`.
 - `pull_request_template.md` trae el checklist de esta sección para cada PR.
 
+### Protección de ramas
+
+`main` y `develop` comparten la misma configuración de protección en GitHub (`Settings → Branches`):
+
+| Regla | Valor |
+|---|---|
+| Requiere Pull Request antes de mergear | ✅ |
+| Aprobaciones de PR requeridas | 0 |
+| Status check obligatorio | `build-and-test` (el job de `ci.yml`), en modo *strict* |
+| Force-push | ❌ Bloqueado |
+| Borrar la rama directamente | ❌ Bloqueado |
+| Se aplica también a administradores | ✅ (`enforce_admins`) |
+| Borrado automático de la rama origen al mergear un PR | ✅ (`delete_branch_on_merge`, config de repo) |
+
+**Por qué exigir PR sin exigir aprobación de terceros:** en un repo de un solo desarrollador no hay nadie más para aprobar un review — pedir `required_approving_review_count > 0` dejaría el repo bloqueado para siempre. Lo que sí importa es que **no exista push directo**: todo cambio, incluso los propios, pasa por un PR con su diff visible y su check de CI en verde, aunque nadie lo apruebe. Eso deja un historial auditable (qué cambió, cuándo, por qué) en vez de commits sueltos directo a `main`.
+
+**Por qué el status check es "strict":** en modo *strict*, GitHub exige que la rama del PR esté actualizada con el último `main`/`develop` antes de permitir el merge. Sin esto, un PR podría pasar CI contra una versión vieja de la rama base y romper algo que otro PR mergeado *después* de abrirlo ya había arreglado.
+
+**Por qué `enforce_admins: true`:** sin esta opción, el owner del repo podría saltarse todas las reglas de arriba con un push directo — justo lo que se quiere evitar. Obliga a seguir el mismo flujo de PR incluso en apuros, algo que ya se puso a prueba en la práctica: un hotfix de deploy roto en producción se resolvió igual vía PR, en minutos, sin necesidad de bypasear la protección.
+
+**Por qué bloquear force-push y borrado de rama:** ambos reescriben o destruyen historial ya publicado. En `main` puntualmente, un force-push accidental podría dejar producción apuntando a un commit que ya no existe en el repo.
+
+**Por qué `delete_branch_on_merge`:** evita acumular ramas `feature/*` / `release/*` / `hotfix/*` ya mergeadas y sin uso — la lista de ramas del repo muestra solo trabajo en curso.
+
 ### Validación en dos capas
 
 1. **Frontend**: validación visual básica (campos requeridos, tipos). Feedback inmediato al usuario.
