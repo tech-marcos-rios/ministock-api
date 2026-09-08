@@ -36,32 +36,53 @@ public class Result
     public bool IsFailure => !IsSuccess;
 
     /// <summary>
-    /// <c>true</c> cuando el fallo se debe a un recurso no encontrado (HTTP 404).
-    /// Permite que los controllers elijan el status code sin comparar strings de error.
+    /// Categoría del error de negocio. Permite que la capa Api elija el status code HTTP
+    /// (vía <c>ResultExtensions.ToActionResult</c>) sin comparar strings de error ni repetir
+    /// el mismo if/else en cada controller.
     /// </summary>
-    public bool IsNotFound { get; private init; }
+    public ErrorType Type { get; private init; }
 
-    protected Result(bool isSuccess, string? error)
+    protected Result(bool isSuccess, string? error, ErrorType type)
     {
         IsSuccess = isSuccess;
         Error     = error;
+        Type      = type;
     }
 
     /// <summary>Crea un resultado exitoso sin valor de retorno.</summary>
-    public static Result Success() => new(true, null);
+    public static Result Success() => new(true, null, ErrorType.Validation);
 
     /// <summary>Crea un resultado fallido con el mensaje de error de negocio.</summary>
-    /// <param name="notFound">Marca el fallo como "recurso no encontrado" para mapeo HTTP 404.</param>
-    public static Result Failure(string error, bool notFound = false) =>
-        new(false, error) { IsNotFound = notFound };
+    /// <param name="type">Categoría del error, usada para elegir el status code HTTP.</param>
+    public static Result Failure(string error, ErrorType type = ErrorType.Validation) =>
+        new(false, error, type);
 
     /// <summary>Crea un resultado exitoso con un valor de retorno tipado.</summary>
-    public static Result<T> Success<T>(T value) => new(value, true, null);
+    public static Result<T> Success<T>(T value) => new(value, true, null, ErrorType.Validation);
 
     /// <summary>Crea un resultado fallido tipado (el valor será <c>null</c>/<c>default</c>).</summary>
-    /// <param name="notFound">Marca el fallo como "recurso no encontrado" para mapeo HTTP 404.</param>
-    public static Result<T> Failure<T>(string error, bool notFound = false) =>
-        new(default, false, error) { IsNotFound = notFound };
+    /// <param name="type">Categoría del error, usada para elegir el status code HTTP.</param>
+    public static Result<T> Failure<T>(string error, ErrorType type = ErrorType.Validation) =>
+        new(default, false, error, type);
+}
+
+/// <summary>
+/// Categoría de un error de negocio devuelto por un <see cref="Result"/> fallido.
+/// Determina el status code HTTP que le corresponde en la capa Api.
+/// </summary>
+public enum ErrorType
+{
+    /// <summary>Datos inválidos o regla de negocio violada de forma genérica → HTTP 400.</summary>
+    Validation,
+
+    /// <summary>El recurso solicitado no existe → HTTP 404.</summary>
+    NotFound,
+
+    /// <summary>El recurso ya existe / conflicto de estado → HTTP 409.</summary>
+    Conflict,
+
+    /// <summary>Credenciales inválidas o token expirado → HTTP 401.</summary>
+    Unauthorized
 }
 
 /// <summary>
@@ -76,7 +97,7 @@ public class Result<T> : Result
     /// </summary>
     public T? Value { get; }
 
-    internal Result(T? value, bool isSuccess, string? error) : base(isSuccess, error)
+    internal Result(T? value, bool isSuccess, string? error, ErrorType type) : base(isSuccess, error, type)
     {
         Value = value;
     }

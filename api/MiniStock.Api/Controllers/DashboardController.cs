@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MiniStock.Api.Extensions;
 using MiniStock.Application.DTOs.Dashboard;
 using MiniStock.Application.DTOs.Products;
 using MiniStock.Application.DTOs.StockMovements;
-using MiniStock.Application.Services;
+using MiniStock.Application.Interfaces;
 
 namespace MiniStock.Api.Controllers;
 
@@ -12,16 +13,16 @@ namespace MiniStock.Api.Controllers;
 [Authorize]
 public class DashboardController : ControllerBase
 {
-    private readonly DashboardService _service;
+    private readonly IDashboardService _service;
 
-    public DashboardController(DashboardService service) => _service = service;
+    public DashboardController(IDashboardService service) => _service = service;
 
     [HttpGet("summary")]
     [ProducesResponseType(typeof(DashboardSummaryResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetSummary(CancellationToken ct)
     {
         var result = await _service.GetSummaryAsync(ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpGet("stock-by-category")]
@@ -29,7 +30,7 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetStockByCategory(CancellationToken ct)
     {
         var result = await _service.GetStockByCategoryAsync(ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpGet("low-stock")]
@@ -37,7 +38,7 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetLowStock(CancellationToken ct)
     {
         var result = await _service.GetLowStockProductsAsync(ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpGet("recent-movements")]
@@ -45,6 +46,6 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetRecentMovements([FromQuery] int count = 10, CancellationToken ct = default)
     {
         var result = await _service.GetRecentMovementsAsync(count, ct);
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 }
