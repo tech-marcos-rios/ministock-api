@@ -11,19 +11,37 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useDashboardSummary, useStockByCategory, useRecentMovements } from "@/hooks/useDashboard";
+import { QueryError } from "@/components/ui/QueryError";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
 export default function DashboardPage() {
-  const { data: summary, isLoading: isLoadingSummary } = useDashboardSummary();
-  const { data: stockByCategory, isLoading: isLoadingStock } = useStockByCategory();
-  const { data: recentMovements, isLoading: isLoadingMovements } = useRecentMovements(5);
+  const summaryQuery = useDashboardSummary();
+  const stockQuery = useStockByCategory();
+  const movementsQuery = useRecentMovements(5);
 
-  if (isLoadingSummary || isLoadingStock || isLoadingMovements) {
+  const { data: summary } = summaryQuery;
+  const { data: stockByCategory } = stockQuery;
+  const { data: recentMovements } = movementsQuery;
+
+  if (summaryQuery.isLoading || stockQuery.isLoading || movementsQuery.isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
+    );
+  }
+
+  if (summaryQuery.isError || stockQuery.isError || movementsQuery.isError) {
+    return (
+      <QueryError
+        error={summaryQuery.error ?? stockQuery.error ?? movementsQuery.error}
+        onRetry={() => {
+          summaryQuery.refetch();
+          stockQuery.refetch();
+          movementsQuery.refetch();
+        }}
+      />
     );
   }
 
