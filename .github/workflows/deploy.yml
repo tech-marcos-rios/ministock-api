@@ -22,14 +22,33 @@ jobs:
 
       - name: Deploy to Hetzner via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: ${{ secrets.HETZNER_USER }}
           key: ${{ secrets.HETZNER_SSH_KEY }}
+          envs: CORS_ORIGINS
           script: |
             set -e
             cd /opt/ministock
             git fetch origin main
             git reset --hard origin/main
+
+            # CORS_ORIGINS se sincroniza desde el secret de GitHub en cada deploy, no un
+            # .env manual que nadie vuelve a tocar (DB_PASSWORD/JWT_KEY siguen viviendo en
+            # deploy/.env, sin tocar acá — son más sensibles y un error ahí es mucho más
+            # costoso que un CORS mal configurado). Si el secret no está seteado, se aborta
+            # en vez de escribir un valor vacío que rompería CORS en producción.
+            if [ -z "$CORS_ORIGINS" ]; then
+              echo "El secret CORS_ORIGINS no está seteado en GitHub — abortando el deploy."
+              exit 1
+            fi
+            if grep -q '^CORS_ORIGINS=' deploy/.env; then
+              sed -i "s|^CORS_ORIGINS=.*|CORS_ORIGINS=$CORS_ORIGINS|" deploy/.env
+            else
+              echo "CORS_ORIGINS=$CORS_ORIGINS" >> deploy/.env
+            fi
+
             docker compose -f deploy/docker-compose.yml up --build -d
             docker image prune -f
