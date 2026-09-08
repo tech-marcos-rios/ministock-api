@@ -24,16 +24,14 @@ public class DashboardService : IDashboardService
 
     public async Task<Result<DashboardSummaryResponse>> GetSummaryAsync(CancellationToken ct = default)
     {
-        var totalProducts = await _dashboard.GetTotalActiveProductsAsync(ct);
+        var products = await _dashboard.GetProductsSummaryAsync(ct);
         var totalCategories = await _dashboard.GetTotalActiveCategoriesAsync(ct);
-        var lowStock = await _dashboard.GetLowStockProductsCountAsync(ct);
-        var totalValue = await _dashboard.GetTotalInventoryValueAsync(ct);
 
         return Result.Success(new DashboardSummaryResponse(
-            totalProducts,
+            products.TotalActiveProducts,
             totalCategories,
-            lowStock,
-            totalValue
+            products.LowStockProducts,
+            products.TotalInventoryValue
         ));
     }
 

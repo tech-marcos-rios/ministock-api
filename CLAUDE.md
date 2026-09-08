@@ -31,10 +31,10 @@ CI/CD: GitHub Actions (push → build → deploy). Estado: completo y deployado.
 - Grabar video Loom de 90s con la demo (dashboard + CRUD de productos) y subirlo.
 - Bump de Next.js 14→16 en `web/` — requiere `npm audit fix --force` (breaking cambios), dejado afuera a propósito de la auditoría de seguridad para no mezclarlo con fixes de seguridad. Hacerlo como migración aparte, con testing dedicado. Confirmado 2026-09-08 que sigue habiendo ~20 advisories abiertos en Next 14.2.35 + 2 altos en postcss (`npm audit`).
 - CSP del frontend con `'unsafe-inline'` + `'unsafe-eval'` en `script-src` (`next.config.mjs`) — aceptado por ahora (ver `### Seguridad y performance` abajo). Arreglarlo bien requiere CSP con nonces, que a su vez requiere `middleware.ts` server-side — mismo trade-off ya documentado para el auth guard client-side.
-- `DashboardService.GetSummaryAsync` sigue haciendo 4 round-trips separados a la DB (3 de ellos sobre `Products` con el mismo filtro `IsActive`) — se podrían combinar en 1-2 queries. Prioridad baja, no se tocó para no inflar el diff de los pases de hardening.
-- Sin índice en `StockMovements.CreatedAt` (usado en el `ORDER BY` de todo listado de movimientos) — irrelevante a la escala actual, revisar si la tabla crece mucho.
+- [x] **`DashboardService.GetSummaryAsync` hacía 4 round-trips separados a la DB** (3 de ellos sobre `Products` con el mismo filtro `IsActive`) — resuelto en `perf/dashboard-query-optimization` (2026-09-08). `IDashboardRepository.GetProductsSummaryAsync` combina total activo, valor de inventario y conteo de low-stock en un solo `SELECT` (`GroupBy(_ => true)` + agregados), quedando en 2 round-trips (Products + Categories). Verificado contra Postgres real vía `DashboardFlowTests`.
+- [x] **Sin índice en `StockMovements.CreatedAt`** (usado en el `ORDER BY` de todo listado de movimientos) — agregado en la misma rama/migración (`AddStockMovementCreatedAtIndex`).
 - Backup/restore de la base de producción — no implementado (documentado en `deploy/ROLLBACK.md` en vez de omitido). Bajo impacto mientras la DB sea solo datos de demo.
-- Monitoreo/APM más robusto (hoy solo `/health` básico) — requiere dar de alta un servicio externo con credenciales del usuario, no es algo para resolver sin su intervención directa.
+- Monitoreo/APM más robusto (hoy solo `/health` básico) — pospuesto a propósito; Marcos está evaluando un tablero propio (salud/logs/deploys/backups de todo el portfolio) en vez de un servicio externo puntual — ver nota en `06-azure-pipeline/CLAUDE.md`.
 
 ### Gaps del diagnóstico 26-09-07 (revisión 2026-09-08)
 

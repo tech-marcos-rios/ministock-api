@@ -10,20 +10,26 @@ public class DashboardRepository : IDashboardRepository
 
     public DashboardRepository(AppDbContext context) => _context = context;
 
-    public Task<int> GetTotalActiveProductsAsync(CancellationToken ct) =>
-        _context.Products.CountAsync(p => p.IsActive, ct);
+    // Antes eran 3 round-trips separados (count total, sum de valor, count de low-stock),
+    // los tres sobre el mismo Where(IsActive). GroupBy(_ => true) fuerza a EF Core a traer
+    // los tres agregados en un solo SELECT.
+    public async Task<ProductsSummary> GetProductsSummaryAsync(CancellationToken ct)
+    {
+        var summary = await _context.Products
+            .Where(p => p.IsActive)
+            .GroupBy(_ => true)
+            .Select(g => new ProductsSummary(
+                g.Count(),
+                g.Sum(p => p.Price * p.Stock),
+                g.Count(p => p.Stock <= p.MinStock)
+            ))
+            .SingleOrDefaultAsync(ct);
+
+        return summary ?? new ProductsSummary(0, 0m, 0);
+    }
 
     public Task<int> GetTotalActiveCategoriesAsync(CancellationToken ct) =>
         _context.Categories.CountAsync(c => c.IsActive, ct);
-
-    public Task<decimal> GetTotalInventoryValueAsync(CancellationToken ct) =>
-        _context.Products
-            .Where(p => p.IsActive)
-            .SumAsync(p => p.Price * p.Stock, ct);
-
-    public Task<int> GetLowStockProductsCountAsync(CancellationToken ct) =>
-        _context.Products
-            .CountAsync(p => p.IsActive && p.Stock <= p.MinStock, ct);
 
     public async Task<IReadOnlyList<StockByCategoryResponse>> GetStockByCategoryAsync(CancellationToken ct)
     {

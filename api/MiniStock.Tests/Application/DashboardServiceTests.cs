@@ -25,10 +25,8 @@ public class DashboardServiceTests
     [Fact]
     public async Task GetSummary_ReturnsAllFourKpis()
     {
-        _dashboard.Setup(r => r.GetTotalActiveProductsAsync(default)).ReturnsAsync(9);
+        _dashboard.Setup(r => r.GetProductsSummaryAsync(default)).ReturnsAsync(new ProductsSummary(9, 15000m, 2));
         _dashboard.Setup(r => r.GetTotalActiveCategoriesAsync(default)).ReturnsAsync(4);
-        _dashboard.Setup(r => r.GetLowStockProductsCountAsync(default)).ReturnsAsync(2);
-        _dashboard.Setup(r => r.GetTotalInventoryValueAsync(default)).ReturnsAsync(15000m);
 
         var result = await _sut.GetSummaryAsync();
 
