@@ -14,6 +14,7 @@ public class StockMovementRepository : IStockMovementRepository
     public async Task<PagedResult<StockMovement>> GetPagedAsync(int page, int pageSize, Guid? productId, CancellationToken ct)
     {
         var query = _context.StockMovements
+            .AsNoTracking()
             .Include(m => m.Product)
             .Include(m => m.CreatedBy)
             .AsQueryable();
@@ -34,6 +35,7 @@ public class StockMovementRepository : IStockMovementRepository
     public async Task<IReadOnlyList<StockMovement>> GetRecentAsync(int count, CancellationToken ct)
     {
         var list = await _context.StockMovements
+            .AsNoTracking()
             .Include(m => m.Product)
             .Include(m => m.CreatedBy)
             .OrderByDescending(m => m.CreatedAt)

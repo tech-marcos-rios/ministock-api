@@ -11,12 +11,15 @@ public class ProductRepository : IProductRepository
 
     public ProductRepository(AppDbContext context) => _context = context;
 
+    // AsNoTracking en todo el archivo: los callers que mutan (Update/Deactivate)
+    // llaman explícitamente a Update(product) más abajo, que adjunta y marca
+    // modificado sin depender del change tracker.
     public Task<Product?> GetByIdAsync(Guid id, CancellationToken ct) =>
-        _context.Products.Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id, ct);
+        _context.Products.AsNoTracking().Include(p => p.Category).FirstOrDefaultAsync(p => p.Id == id, ct);
 
     public async Task<PagedResult<Product>> GetPagedAsync(int page, int pageSize, string? search, Guid? categoryId, CancellationToken ct)
     {
-        var query = _context.Products.Include(p => p.Category).AsQueryable();
+        var query = _context.Products.AsNoTracking().Include(p => p.Category).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p =>
@@ -39,6 +42,7 @@ public class ProductRepository : IProductRepository
     public async Task<IReadOnlyList<Product>> GetLowStockAsync(CancellationToken ct)
     {
         var list = await _context.Products
+            .AsNoTracking()
             .Include(p => p.Category)
             .Where(p => p.IsActive && p.Stock <= p.MinStock)
             .OrderBy(p => p.Stock)
