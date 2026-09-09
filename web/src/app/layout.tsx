@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { headers } from "next/headers";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
 
@@ -19,11 +20,16 @@ export const metadata: Metadata = {
   description: "Sistema de gestión de inventario",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Leer headers() fuerza render dinámico (opta afuera del prerender estático)
+  // — sin esto, la página se genera una sola vez en build time y nunca puede
+  // llevar el nonce por-request que arma src/middleware.ts.
+  await headers();
+
   return (
     <html lang="es">
       <body
