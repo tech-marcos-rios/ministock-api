@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useState, FormEvent } from "react";
 import { Plus, Search, Pencil, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import {
   useProducts,
@@ -67,7 +67,13 @@ export default function ProductosPage() {
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
 
-  useEffect(() => setPage(1), [debouncedSearch]);
+  // Resetea la página al cambiar la búsqueda durante el render (no en un Effect):
+  // evita el render extra que dispara react-hooks/set-state-in-effect.
+  const [prevSearch, setPrevSearch] = useState(debouncedSearch);
+  if (debouncedSearch !== prevSearch) {
+    setPrevSearch(debouncedSearch);
+    setPage(1);
+  }
 
   const { data, isLoading, isError, error, refetch } = useProducts(page, 15, debouncedSearch || undefined);
   const { data: categories } = useCategoriesAll();

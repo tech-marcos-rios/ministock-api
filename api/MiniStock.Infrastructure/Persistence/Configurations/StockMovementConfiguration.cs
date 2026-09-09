@@ -9,6 +9,8 @@ public class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement
     public void Configure(EntityTypeBuilder<StockMovement> builder)
     {
         builder.HasKey(m => m.Id);
+        // Sin esto, cada listado de movimientos hace un ORDER BY CreatedAt escaneando toda la tabla.
+        builder.HasIndex(m => m.CreatedAt);
         builder.Property(m => m.Notes).HasMaxLength(300);
         builder.Property(m => m.Type).HasConversion<string>();
         builder.HasOne(m => m.Product).WithMany(p => p.Movements).HasForeignKey(m => m.ProductId).OnDelete(DeleteBehavior.Cascade);
